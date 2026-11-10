@@ -1,4 +1,4 @@
-# Radar INTA Lechero
+# Radar
 
 Recolección diaria de noticias, eventos, normativa y contexto meteorológico para comunicación del sector lechero argentino. El proyecto utiliza scraping de páginas públicas, RSS, Google News RSS, la Primera Sección del Boletín Oficial y endpoints públicos del SMN. **No utiliza inteligencia artificial ni APIs de modelos generativos.**
 
