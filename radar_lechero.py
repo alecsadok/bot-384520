@@ -42,7 +42,7 @@ BASE_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = BASE_DIR / "informes"
 LOG = logging.getLogger("radar_lechero")
 USER_AGENT = (
-    "RadarINTALechero/1.0 (+https://github.com/alecsadok/radarIL; "
+    "RadarINTALechero/1.0 (+https://github.com/alecsadok/radar-inta-lechero; "
     "contact: repository-maintainer) Python requests"
 )
 REQUEST_TIMEOUT = (15, 35)
