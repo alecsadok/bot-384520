@@ -7,11 +7,11 @@ Recolección diaria de noticias, eventos, normativa y contexto meteorológico pa
 Cada ejecución crea o actualiza únicamente los archivos correspondientes a la fecha local del informe dentro de `informes/`:
 
 - `bot384520_DDMMYY.html`
-- `bot384520_DDMMYY.xls`
+- `bot384520_DDMMYY.txt`
 
-Ejemplo: `bot384520_101126.html` y `bot384520_101126.xls` para el 10/11/2026.
+Ejemplo: `bot384520_101126.html` y `bot384520_101126.txt` para el 10/11/2026.
 
-El filtro editorial toma publicaciones con fecha identificable dentro de las 24 horas anteriores al momento de ejecución. Se registra la fecha y hora de publicación, la fuente, el enlace original, las etiquetas temáticas y, cuando corresponde, la fecha futura de un evento. La información meteorológica se muestra en un bloque separado porque es una consulta de contexto actual y no una noticia publicada.
+El filtro editorial toma publicaciones con fecha identificable dentro de las 24 horas anteriores al momento de ejecución. Se registra la fecha y hora de publicación, la fuente, el enlace original, las etiquetas temáticas y, cuando corresponde, la fecha futura de un evento. El archivo TXT contiene, para cada publicación, el título, la fecha de publicación y el enlace original, separados por líneas en blanco. La información meteorológica se muestra en un bloque separado del HTML porque es una consulta de contexto actual y no una noticia publicada.
 
 ## Ejecución automática
 
@@ -101,4 +101,3 @@ python radar_lechero.py
 - `beautifulsoup4`: análisis de HTML.
 - `feedparser`: RSS/Atom.
 - `python-dateutil`: interpretación de fechas.
-- `xlwt`: escritura del formato Excel 97–2003 `.xls`.
