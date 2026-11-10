@@ -1,36 +1,79 @@
-# Radar
+# Radar INTA Lechero
 
 Recolección diaria de noticias, eventos, normativa y contexto meteorológico para comunicación del sector lechero argentino. El proyecto utiliza scraping de páginas públicas, RSS, Google News RSS, la Primera Sección del Boletín Oficial y endpoints públicos del SMN. **No utiliza inteligencia artificial ni APIs de modelos generativos.**
 
 ## Qué genera
 
-Cada ejecución crea informes fechados en `informes/`:
+Cada ejecución crea o actualiza únicamente los archivos correspondientes a la fecha local del informe dentro de `informes/`:
+
 - `noticiasinta_DDMMYY.html`
 - `noticiasinta_DDMMYY.xls`
 
-El filtro editorial toma publicaciones con fecha identificable dentro de las 24 horas anteriores a la ejecución. Registra fecha, fuente, enlace y etiquetas temáticas. El contexto meteorológico se presenta separado de las noticias.
+Ejemplo: `noticiasinta_101126.html` y `noticiasinta_101126.xls` para el 10/11/2026.
+
+El filtro editorial toma publicaciones con fecha identificable dentro de las 24 horas anteriores al momento de ejecución. Se registra la fecha y hora de publicación, la fuente, el enlace original, las etiquetas temáticas y, cuando corresponde, la fecha futura de un evento. La información meteorológica se muestra en un bloque separado porque es una consulta de contexto actual y no una noticia publicada.
 
 ## Ejecución automática
 
-El workflow `.github/workflows/radar-diario.yml` está programado para las 23:00 de `America/Argentina/Cordoba` y permite ejecución manual desde **Actions**. Requiere Actions habilitado, el workflow en la rama predeterminada y permiso `contents: write`. Los horarios programados pueden demorarse por demanda de GitHub.
+El workflow `.github/workflows/radar-diario.yml` programa el script todos los días a las **23:00 de `America/Argentina/Cordoba`** y permite ejecución manual desde la pestaña **Actions** de GitHub.
 
-## Fuentes y cobertura
+El workflow instala dependencias, ejecuta el script y guarda los informes en el propio repositorio mediante un commit de `github-actions[bot]`. Requiere que GitHub Actions esté habilitado, que el archivo esté en la rama predeterminada y que el workflow tenga permiso `contents: write`. GitHub advierte que los eventos programados pueden demorarse en períodos de alta demanda; la hora indicada es la hora programada, no una garantía de inicio al segundo.
 
-Incluye portales oficiales y sectoriales, consultas temáticas en Google News RSS, Primera Sección del Boletín Oficial, endpoints públicos del Servicio Meteorológico Nacional y perfiles públicos de Instagram/X solicitados. El acceso a redes sociales es limitado: si una plataforma no expone publicaciones públicamente, el informe lo indica como restringido/no verificable. No usa credenciales ni evade controles.
+## Instalación en `alecsadok/radarIL`
 
-## Normativa
+Copiar al directorio raíz del repositorio:
 
-Para normas detectadas se prepara un extracto y un copy orientativo mediante reglas determinísticas. No se adjudican beneficios no comprobados. Antes de comunicar o tomar decisiones, verificar articulado, sujetos alcanzados, requisitos, anexos y vigencia en la publicación oficial.
+```text
+radar_lechero.py
+requirements.txt
+.github/workflows/radar-diario.yml
+.gitignore
+README.md
+```
 
-## Criterios y límites
+Crear la carpeta `informes/` (puede contener un `.gitkeep` para que exista antes de la primera ejecución). Luego hacer commit y push a la rama por defecto. El primer informe se genera al ejecutar manualmente el workflow o en el siguiente horario programado.
 
-- Solo se incluyen noticias/eventos con fecha de publicación identificable dentro de las últimas 24 horas.
+## Fuentes incluidas
+
+### Portales de noticias y especialidad
+
+Argentina.gob.ar, INTA Informa, SENASA, Todo Lechería, Agrofy News/Lechería, Bichos de Campo, Agrolink, Clarín Rural, Agroverdad, Mundo Agro Córdoba, Agritotal, Revista Chacra/Infobae, La Nación Campo, UNL, Infocampo, Agroempresario, Portal Lechero, OCLA, FCV-UNL Eventos, Colegio de Médicos Veterinarios de Santa Fe, Mundo Rural, InfoLáctea, INTA, Secretaría de Agricultura, INDEC y Bolsa de Comercio de Rosario.
+
+### Búsqueda transversal
+
+Consultas temáticas en Google News RSS, acotadas a la ventana reciente (`when:1d`). Esto agrega medios y publicaciones que no están en la lista fija de portales.
+
+### Boletín Oficial
+
+Consulta de la **Primera Sección – Legislación y Avisos Oficiales**. Busca publicaciones vinculadas con lechería, bovinos, ganadería, sanidad animal, agricultura, trazabilidad, producción, forrajes, semillas, insumos, financiamiento, comercialización, impuestos, energía y normativa agropecuaria.
+
+Para cada norma detectada prepara un extracto y un copy institucional de carácter orientativo con reglas determinísticas. El copy no adjudica automáticamente un beneficio: distingue posibles efectos sobre financiamiento, alivio fiscal, sanidad/trazabilidad, costos o comercialización y advierte cuando el texto disponible no permite identificar un beneficio directo. Se deben verificar siempre el articulado, los sujetos alcanzados, los requisitos, los anexos y la vigencia en la publicación oficial antes de comunicar o tomar decisiones.
+
+### Clima y tiempo
+
+Endpoints públicos del Servicio Meteorológico Nacional:
+
+- Observaciones: `https://ws.smn.gob.ar/map_items/weather`
+- Pronóstico: `https://ws.smn.gob.ar/map_items/forecast/3`
+- Alertas: `https://ws.smn.gob.ar/alerts/type/AL`
+
+Se intenta identificar Rafaela, Santa Fe, además de alertas regionales. La cobertura depende de la disponibilidad y estructura de la respuesta del servicio en cada ejecución.
+
+### Redes sociales solicitadas
+
+Se incluyen los perfiles públicos de Instagram y X enumerados en la solicitud. Se consultan sin autenticación y, cuando el HTML público expone enlaces a publicaciones, se intenta leer hasta dos posts por perfil para rescatar contenido y fecha. Instagram y X pueden devolver páginas incompletas, páginas que requieren JavaScript, bloqueos o metadatos de perfil sin publicaciones. El informe identifica esos casos como acceso restringido/no verificable; no usa credenciales, no evade controles y no afirma haber leído publicaciones inaccesibles. Para monitoreo confiable y completo de esas redes se necesitarían APIs oficiales y sus permisos correspondientes.
+
+## Criterios de calidad y límites
+
+- Solo se incluyen noticias y eventos con fecha de publicación identificable en las últimas 24 horas. Una página sin fecha fiable queda fuera, para no presentar material viejo como nuevo.
+- No se inventan fechas de publicación. Las fechas futuras de eventos se extraen del texto cuando pueden identificarse.
 - Se eliminan duplicados por título normalizado.
-- Los resúmenes son extractivos, no generativos.
-- El scraping depende de cambios de diseño, disponibilidad, JavaScript, límites y condiciones de cada fuente.
-- No usa cookies privadas, login ni servicios de IA.
+- Los resúmenes de noticias son extractivos, no generativos.
+- El copy de normativa se construye con reglas y plantillas; no reemplaza asesoramiento legal ni revisión humana.
+- El scraping está sujeto a cambios de diseño, disponibilidad, robots, límites de frecuencia, JavaScript y condiciones de cada fuente. Por eso cada informe incluye una tabla de estado de fuentes.
+- El script no usa cookies privadas, login, cuentas de usuario ni servicios de IA.
 
-## Instalación y prueba local
+## Prueba local
 
 Requiere Python 3.11 o superior:
 
@@ -39,12 +82,23 @@ python -m pip install -r requirements.txt
 python radar_lechero.py
 ```
 
-Para omitir consultas sociales:
+Para desactivar las consultas a perfiles públicos de Instagram/X durante una prueba local:
 
 ```bash
 RADAR_SCAN_SOCIAL=0 python radar_lechero.py
 ```
 
+En Windows PowerShell:
+
+```powershell
+$env:RADAR_SCAN_SOCIAL="0"
+python radar_lechero.py
+```
+
 ## Dependencias
 
-`requests`, `beautifulsoup4`, `feedparser`, `python-dateutil`, `xlwt`.
+- `requests`: descarga de páginas y endpoints.
+- `beautifulsoup4`: análisis de HTML.
+- `feedparser`: RSS/Atom.
+- `python-dateutil`: interpretación de fechas.
+- `xlwt`: escritura del formato Excel 97–2003 `.xls`.
