@@ -27,7 +27,6 @@ from zoneinfo import ZoneInfo
 
 import feedparser
 import requests
-import xlwt
 from bs4 import BeautifulSoup
 from dateutil import parser as date_parser
 from requests.adapters import HTTPAdapter
@@ -965,7 +964,7 @@ def get_weather(now: datetime) -> dict[str, Any]:
     }
 
 # ---------------------------------------------------------------------------
-# Dedupe, HTML y XLS
+# Dedupe, HTML y TXT
 # ---------------------------------------------------------------------------
 def deduplicate(items: list[Item]) -> list[Item]:
     best: dict[str, Item] = {}
@@ -1062,89 +1061,17 @@ footer{{text-align:center;padding:28px;color:var(--muted);font-size:12px}}@media
 </body></html>'''
 
 
-def write_xls(path: Path, items: list[Item], weather: dict[str, Any], statuses: list[dict[str, Any]], now: datetime, window_start: datetime) -> None:
-    book = xlwt.Workbook(encoding="utf-8")
-    header_style = xlwt.easyxf("font: bold on, color white; pattern: pattern solid, fore_colour dark_green; align: wrap on, vert centre")
-    body_style = xlwt.easyxf("align: wrap on, vert top")
-    date_style = xlwt.easyxf("align: vert top", num_format_str="DD/MM/YYYY HH:MM")
-    widths = [4200, 5000, 10500, 4200, 3300, 5000, 10000, 5000, 11000, 15000]
-
-    sheet = book.add_sheet("Noticias y eventos")
-    headers = ["Tipo", "Fuente", "Titular", "Fecha de publicación", "Fecha del evento", "Etiquetas", "Enlace", "Relevancia", "Resumen", "Copy sugerido – normativa"]
-    for col, label in enumerate(headers):
-        sheet.write(0, col, label, header_style)
-        sheet.col(col).width = widths[col]
-    sheet.row(0).height = 540
-    for row_idx, item in enumerate(items, start=1):
-        values = [
-            item.section,
-            item.source,
-            item.title,
-            item.published_at.replace(tzinfo=None),
-            item.event_date,
-            "; ".join(item.tags or []),
-            item.url,
-            item.relevance,
-            item.summary,
-            item.legal_copy,
-        ]
-        for col, value in enumerate(values):
-            style = date_style if col == 3 else body_style
-            sheet.write(row_idx, col, value if value is not None else "", style)
-        sheet.row(row_idx).height = 720
-    sheet.set_panes_frozen(True)
-    sheet.set_horz_split_pos(1)
-    sheet.set_remove_splits(True)
-    # xlwt no implementa autofiltros en hojas Worksheet; se omite para evitar el fallo.
-
-    weather_sheet = book.add_sheet("Clima SMN")
-    weather_headers = ["Tipo de dato", "Localidad / área", "Dato", "Actualización / consulta", "Fuente"]
-    for col, label in enumerate(weather_headers):
-        weather_sheet.write(0, col, label, header_style)
-        weather_sheet.col(col).width = [5000, 6000, 12000, 6500, 11000][col]
-    wr = 1
-    for row in weather.get("observaciones_rafaela", []):
-        vals = ["Observación", "Rafaela, Santa Fe", json.dumps(row, ensure_ascii=False), row.get("actualizado", ""), row.get("url", "")]
-        for c, val in enumerate(vals): weather_sheet.write(wr, c, val, body_style)
-        wr += 1
-    for row in weather.get("pronostico_rafaela", []):
-        vals = ["Pronóstico", "Rafaela, Santa Fe", json.dumps(row.get("dato", {}), ensure_ascii=False), weather.get("consultado", ""), row.get("url", "")]
-        for c, val in enumerate(vals): weather_sheet.write(wr, c, val, body_style)
-        wr += 1
-    for row in weather.get("alertas_santa_fe", []):
-        vals = ["Alerta", "Santa Fe", row.get("texto", ""), weather.get("consultado", ""), row.get("url", "")]
-        for c, val in enumerate(vals): weather_sheet.write(wr, c, val, body_style)
-        wr += 1
-    if wr == 1:
-        weather_sheet.write(1, 0, "Sin datos meteorológicos disponibles en esta ejecución", body_style)
-
-    status_sheet = book.add_sheet("Fuentes")
-    for col, label in enumerate(["Fuente", "URL", "Estado", "Resultados"]):
-        status_sheet.write(0, col, label, header_style)
-    for row_idx, s in enumerate(statuses, start=1):
-        vals = [s.get("fuente", ""), s.get("url", ""), s.get("estado", ""), s.get("resultados", "")]
-        for col, val in enumerate(vals): status_sheet.write(row_idx, col, val, body_style)
-    for col, width in enumerate([8000, 14000, 14000, 3500]): status_sheet.col(col).width = width
-    status_sheet.set_panes_frozen(True)
-    status_sheet.set_horz_split_pos(1)
-    status_sheet.set_remove_splits(True)
-
-    meta = book.add_sheet("Sobre el informe")
-    metadata = [
-        ("Informe", f"BOT 384520 – {now.strftime('%d/%m/%Y')}"),
-        ("Zona horaria", TZ_NAME),
-        ("Ventana de publicaciones", f"{window_start.isoformat()} a {now.isoformat()}"),
-        ("Criterio", "Publicaciones con fecha identificable dentro de las últimas 24 horas. Los datos meteorológicos son una consulta de contexto."),
-        ("IA", "No se utiliza IA. Clasificación por palabras clave y resúmenes extractivos/reglas determinísticas."),
-        ("Normativa", "El copy sugerido es orientativo. Verificar el texto oficial, alcance, vigencia y sujetos alcanzados."),
-        ("Redes sociales", "Instagram y X pueden limitar el acceso automatizado. No se simula lectura de contenido inaccesible."),
-    ]
-    meta.col(0).width = 7500
-    meta.col(1).width = 22000
-    for r, (label, value) in enumerate(metadata):
-        meta.write(r, 0, label, header_style if r == 0 else body_style)
-        meta.write(r, 1, value, body_style)
-    book.save(str(path))
+def write_txt(path: Path, items: list[Item]) -> None:
+    """Genera un listado plano: título, fecha de publicación y enlace."""
+    blocks = []
+    for item in items:
+        blocks.append(
+            f"{item.title.strip()}\n"
+            f"{item.published_at.strftime('%d/%m/%Y')}\n"
+            f"{item.url.strip()}"
+        )
+    content = "\n\n".join(blocks)
+    path.write_text(content + ("\n" if content else ""), encoding="utf-8")
 
 # ---------------------------------------------------------------------------
 # Ejecución
@@ -1156,7 +1083,7 @@ def run() -> tuple[Path, Path, int]:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     suffix = now.strftime("%d%m%y")
     html_path = OUTPUT_DIR / f"bot384520_{suffix}.html"
-    xls_path = OUTPUT_DIR / f"bot384520_{suffix}.xls"
+    txt_path = OUTPUT_DIR / f"bot384520_{suffix}.txt"
 
     LOG.info("Inicio de BOT 384520: %s (%s)", now.isoformat(), TZ_NAME)
     LOG.info("Ventana: %s – %s", window_start.isoformat(), now.isoformat())
@@ -1222,22 +1149,22 @@ def run() -> tuple[Path, Path, int]:
 
     html_content = render_html(items, weather, statuses, now, window_start)
     html_path.write_text(html_content, encoding="utf-8")
-    write_xls(xls_path, items, weather, statuses, now, window_start)
+    write_txt(txt_path, items)
 
     # El nombre de archivo es diario. Si se re-ejecuta en la misma fecha, se
     # actualiza el informe de ese día; nunca se modifican informes de otras fechas.
     LOG.info("Informe HTML: %s", html_path)
-    LOG.info("Informe XLS: %s", xls_path)
+    LOG.info("Listado TXT: %s", txt_path)
     LOG.info("Total: %s publicaciones (%s normas, %s eventos)", len(items), sum(i.section == "Normativa" for i in items), sum(i.section == "Evento" for i in items))
-    return html_path, xls_path, len(items)
+    return html_path, txt_path, len(items)
 
 
 if __name__ == "__main__":
     try:
-        html_file, xls_file, total = run()
+        html_file, txt_file, total = run()
         print(f"OK: {total} publicaciones")
         print(f"HTML: {html_file}")
-        print(f"XLS: {xls_file}")
+        print(f"TXT: {txt_file}")
     except Exception as exc:
         LOG.exception("La ejecución falló: %s", exc)
         sys.exit(1)
