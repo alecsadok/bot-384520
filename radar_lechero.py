@@ -1162,7 +1162,7 @@ def write_xls(path: Path, items: list[Item], weather: dict[str, Any], statuses: 
     book = xlwt.Workbook(encoding="utf-8")
     header_style = xlwt.easyxf("font: bold on, color white; pattern: pattern solid, fore_colour dark_green; align: wrap on, vert centre")
     body_style = xlwt.easyxf("align: wrap on, vert top")
-    date_style = xlwt.easyxf("align: vert top; num_format: DD/MM/YYYY HH:MM")
+    date_style = xlwt.easyxf("align: vert top", num_format_str="DD/MM/YYYY HH:MM")
     widths = [4200, 5000, 10500, 4200, 3300, 5000, 10000, 5000, 11000, 15000]
 
     sheet = book.add_sheet("Noticias y eventos")
