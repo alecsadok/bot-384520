@@ -15,6 +15,7 @@ import logging
 import os
 import re
 import sys
+import threading
 import time
 import unicodedata
 from dataclasses import dataclass, asdict
@@ -334,7 +335,7 @@ class Item:
 
 # Control de frecuencia por dominio: evita ráfagas cuando se consultan muchos
 # artículos de un mismo medio. No intenta ocultar ni alterar la identidad del bot.
-_HOST_REQUEST_LOCK = __import__("threading").Lock()
+_HOST_REQUEST_LOCK = threading.Lock()
 _HOST_LAST_REQUEST: dict[str, float] = {}
 
 def wait_for_host(url: str) -> None:
