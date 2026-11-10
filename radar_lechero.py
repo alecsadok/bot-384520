@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Radar INTA Lechero: recopilación determinística de noticias, eventos, normativa y clima.
+"""BOT 384520: recopilación determinística de noticias, eventos, normativa y clima.
 
 No utiliza modelos de IA ni servicios de generación de texto. Los resúmenes son
 extractivos y los textos sobre normativa se construyen mediante reglas explícitas.
@@ -40,11 +40,8 @@ TZ_NAME = "America/Argentina/Cordoba"
 TZ = ZoneInfo(TZ_NAME)
 BASE_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = BASE_DIR / "informes"
-LOG = logging.getLogger("radar_lechero")
-USER_AGENT = (
-    "RadarINTALechero/1.0 (+https://github.com/alecsadok/radar-inta-lechero; "
-    "contact: repository-maintainer) Python requests"
-)
+LOG = logging.getLogger("bot_384520")
+USER_AGENT = "BOT-384520/1.0"
 REQUEST_TIMEOUT = (15, 35)
 MAX_WORKERS = 4
 MIN_HOST_INTERVAL = 1.5
@@ -55,7 +52,6 @@ MAX_GOOGLE_NEWS_ITEMS = 30
 # Fuentes editoriales y técnicas. Se priorizan sitios oficiales y especializados.
 WEB_SOURCES: list[dict[str, str]] = [
     {"name": "Argentina.gob.ar – Noticias", "url": "https://www.argentina.gob.ar/noticias", "kind": "institucional"},
-    {"name": "INTA Informa", "url": "https://intainforma.inta.gob.ar/noticias/", "kind": "institucional"},
     {"name": "SENASA", "url": "https://www.argentina.gob.ar/senasa", "kind": "institucional"},
     {"name": "Todo Lechería", "url": "https://www.todolecheria.com.ar/noticias/", "kind": "especializada"},
     {"name": "Agrofy – Lechería", "url": "https://news.agrofy.com.ar/lecheria", "kind": "especializada"},
@@ -77,7 +73,6 @@ WEB_SOURCES: list[dict[str, str]] = [
     {"name": "Colegio de Médicos Veterinarios de Santa Fe", "url": "https://cmver.com.ar/", "kind": "profesional"},
     {"name": "Mundo Rural", "url": "https://mundorural.com.ar/", "kind": "agro"},
     {"name": "InfoLáctea", "url": "https://www.infolactea.com.ar/", "kind": "especializada"},
-    {"name": "INTA – Agenda y actividades", "url": "https://www.argentina.gob.ar/inta", "kind": "institucional"},
     {"name": "Secretaría de Agricultura", "url": "https://www.argentina.gob.ar/economia/agricultura", "kind": "institucional"},
     {"name": "INDEC", "url": "https://www.indec.gob.ar/", "kind": "estadistica"},
     {"name": "Bolsa de Comercio de Rosario", "url": "https://www.bcr.com.ar/es/mercados/investigacion-y-desarrollo/informativo-semanal", "kind": "economia"},
@@ -92,117 +87,8 @@ BOLETIN_HOME = "https://www.boletinoficial.gob.ar/"
 # no se evita CAPTCHA ni se accede a endpoints privados. Meta/HTML no siempre
 # contiene publicaciones, por lo que se registra cada limitación de acceso.
 SOCIAL_PROFILES = [
-    "https://www.instagram.com/inta_informa",
-    "https://www.instagram.com/aer_inta_huinca.renanco",
-    "https://www.instagram.com/aer_intariocuarto",
-    "https://www.instagram.com/aercarlospellegriniinta",
-    "https://www.instagram.com/asociacion_cooperadora_inta",
     "https://www.instagram.com/chacradebarrow",
     "https://www.instagram.com/eeafamailla",
-    "https://www.instagram.com/extension.inta",
-    "https://www.instagram.com/inta.apicultura",
-    "https://www.instagram.com/inta.argentina",
-    "https://www.instagram.com/inta.ascasubi",
-    "https://www.instagram.com/inta.basail",
-    "https://www.instagram.com/inta.bolivar",
-    "https://www.instagram.com/inta.chascomus",
-    "https://www.instagram.com/inta.cia",
-    "https://www.instagram.com/inta.ciep",
-    "https://www.instagram.com/inta.cuencadelsalado",
-    "https://www.instagram.com/inta.estacion.forestal.vd",
-    "https://www.instagram.com/inta.fitopatologia",
-    "https://www.instagram.com/inta.floricultura",
-    "https://www.instagram.com/inta.jardinbotanico",
-    "https://www.instagram.com/inta.nogoya",
-    "https://www.instagram.com/inta.recursosnaturales",
-    "https://www.instagram.com/inta.redagua",
-    "https://www.instagram.com/inta.saltajujuy",
-    "https://www.instagram.com/inta.tandil",
-    "https://www.instagram.com/inta.tdf",
-    "https://www.instagram.com/inta_25demayo",
-    "https://www.instagram.com/inta_aer_castellanos",
-    "https://www.instagram.com/inta_aer_virasoro",
-    "https://www.instagram.com/inta_angelgallardo",
-    "https://www.instagram.com/inta_chajari",
-    "https://www.instagram.com/inta_esquel",
-    "https://www.instagram.com/inta_ing.juarez",
-    "https://www.instagram.com/inta_laboulaye",
-    "https://www.instagram.com/inta_norte_neuquino",
-    "https://www.instagram.com/inta_villegas",
-    "https://www.instagram.com/intaaeradeliamaria",
-    "https://www.instagram.com/intaaercordoba",
-    "https://www.instagram.com/intaaersanfrancisco",
-    "https://www.instagram.com/intaamba",
-    "https://www.instagram.com/intaangelgallardo",
-    "https://www.instagram.com/intaanguil",
-    "https://www.instagram.com/intaarrecifes",
-    "https://www.instagram.com/intabalcarce",
-    "https://www.instagram.com/intabariloche",
-    "https://www.instagram.com/intabellavista",
-    "https://www.instagram.com/intabellavista.forestales",
-    "https://www.instagram.com/intabellavista_horticultura",
-    "https://www.instagram.com/intabellville",
-    "https://www.instagram.com/intabordenave",
-    "https://www.instagram.com/intabordenave.agroecologia",
-    "https://www.instagram.com/intacaacati",
-    "https://www.instagram.com/intacatamarca",
-    "https://www.instagram.com/intachacoformosa",
-    "https://www.instagram.com/intachicos",
-    "https://www.instagram.com/intachivilcoy",
-    "https://www.instagram.com/intaciap",
-    "https://www.instagram.com/intacicvya",
-    "https://www.instagram.com/intacipaf",
-    "https://www.instagram.com/intaconcepcion",
-    "https://www.instagram.com/intaconcordia",
-    "https://www.instagram.com/intacoronelsuarez",
-    "https://www.instagram.com/intacorrientes",
-    "https://www.instagram.com/intacrban",
-    "https://www.instagram.com/intacrespo",
-    "https://www.instagram.com/intacrmisiones",
-    "https://www.instagram.com/intacrtucumansantiago",
-    "https://www.instagram.com/intadelta",
-    "https://www.instagram.com/intadiamante",
-    "https://www.instagram.com/intaeeaquimili",
-    "https://www.instagram.com/intaelbolson",
-    "https://www.instagram.com/intaelcolorado",
-    "https://www.instagram.com/intaentrerios",
-    "https://www.instagram.com/intagcal",
-    "https://www.instagram.com/intageneralcabrera",
-    "https://www.instagram.com/intagualeguaychu",
-    "https://www.instagram.com/intajesusmaria",
-    "https://www.instagram.com/intajuninba",
-    "https://www.instagram.com/intajuninmza",
-    "https://www.instagram.com/intalarioja",
-    "https://www.instagram.com/intalasbrenas",
-    "https://www.instagram.com/intamakalle",
-    "https://www.instagram.com/intamanfredi",
-    "https://www.instagram.com/intamarcosjuarez",
-    "https://www.instagram.com/intamendoza",
-    "https://www.instagram.com/intamercedes",
-    "https://www.instagram.com/intamercedesba",
-    "https://www.instagram.com/intamontecaseros",
-    "https://www.instagram.com/intanaredo",
-    "https://www.instagram.com/intaolavarria",
-    "https://www.instagram.com/intaparana",
-    "https://www.instagram.com/intapatagonianorte",
-    "https://www.instagram.com/intapergamino",
-    "https://www.instagram.com/intaramacaida",
-    "https://www.instagram.com/intarecursosgeneticos",
-    "https://www.instagram.com/intarojas",
-    "https://www.instagram.com/intasada",
-    "https://www.instagram.com/intasaenzpe",
-    "https://www.instagram.com/intasalta",
-    "https://www.instagram.com/intasanjuan",
-    "https://www.instagram.com/intasanluis",
-    "https://www.instagram.com/intasanpedro",
-    "https://www.instagram.com/intasantafe",
-    "https://www.instagram.com/intasantiago",
-    "https://www.instagram.com/intaucacha",
-    "https://www.instagram.com/intavillaguay",
-    "https://www.instagram.com/intavillamaria",
-    "https://www.instagram.com/intayuto",
-    "https://www.instagram.com/nuevapalmira.inta",
-    "https://www.instagram.com/vamos_al_inta",
     "https://x.com/pamperotv?lang=es",
     "https://x.com/senasaar",
 ]
@@ -212,7 +98,7 @@ SOCIAL_PROFILES = [
 # ---------------------------------------------------------------------------
 KEYWORDS: dict[str, list[str]] = {
     "Lechería y producción láctea": [
-        "lechería", "vacas", "ganado", "inta rafaela", "inta paraná", "sector lechero",
+        "lechería", "vacas", "ganado", "sector lechero",
         "actividad lechera", "producción lechera", "producción de leche", "producción láctea",
         "cadena láctea", "cadena de valor láctea", "industria láctea", "industria lechera",
         "tambo", "tambos", "establecimiento lechero", "establecimientos lecheros",
@@ -276,7 +162,7 @@ KEYWORDS: dict[str, list[str]] = {
         "precio internacional de la leche", "exportaciones lácteas", "mercado internacional de lácteos",
     ],
     "Regulación y organismos": [
-        "senasa", "secretaría de agricultura", "inta", "registro de establecimientos lácteos",
+        "senasa", "secretaría de agricultura", "registro de establecimientos lácteos",
         "habilitación de establecimientos lácteos", "habilitación de tambos", "habilitación de plantas lácteas",
         "transporte de productos lácteos", "buenas prácticas lecheras", "buenas prácticas de ordeño",
         "buenas prácticas de manufactura", "inocuidad alimentaria", "higiene del tambo", "higiene de la leche",
@@ -307,7 +193,7 @@ EVENT_WORDS = [
     "exposición", "exposicion", "feria", "inscripción", "inscripcion", "convocatoria", "reunión", "reunion",
     "demostración", "demostracion", "entrenamiento", "actualización", "actualizacion", "foro",
 ]
-BROAD_TERMS = {"leche", "vaca", "vacas", "ganado", "campo", "inta", "agro", "rural", "producción", "produccion"}
+BROAD_TERMS = {"leche", "vaca", "vacas", "ganado", "campo", "agro", "rural", "producción", "produccion"}
 
 # ---------------------------------------------------------------------------
 # Modelos y utilidades
@@ -745,7 +631,6 @@ def google_news_queries() -> list[str]:
         '("vacas lecheras" OR "rodeo lechero" OR "producción de leche") Argentina when:1d',
         '(mastitis OR terneros OR vaquillonas OR reproducción bovina) lechería Argentina when:1d',
         '(OCLA OR "precio de la leche" OR "industria láctea" OR lácteos) Argentina when:1d',
-        '(INTA Rafaela OR INTA lechería OR INTA tambo) Argentina when:1d',
         '(SENASA bovinos OR trazabilidad animal OR identificación electrónica bovina) Argentina when:1d',
         '(forrajes OR alfalfa OR silo OR nutrición bovina) tambo Argentina when:1d',
         '(clima OR lluvias OR sequía OR calor OR ITH) tambo Santa Fe Argentina when:1d',
@@ -894,7 +779,7 @@ def scrape_bulletin(now: datetime) -> tuple[list[Item], dict[str, Any]]:
                 pub = edition_date
                 relevant, tags, score = is_relevant(title_hint)
                 anchor_text = normalize(title_hint)
-                sector_anchor = any(term in anchor_text for term in ("leche", "lact", "tambo", "bovino", "ganad", "agropec", "agricultur", "animal", "forraj", "semilla", "veterin", "inta", "senasa"))
+                sector_anchor = any(term in anchor_text for term in ("leche", "lact", "tambo", "bovino", "ganad", "agropec", "agricultur", "animal", "forraj", "semilla", "veterin", "senasa"))
                 if relevant and sector_anchor and is_within_window(pub, now):
                     fallback_summary = "Publicación detectada en la edición diaria. La ficha o el texto completo no pudo recuperarse automáticamente; abrir el enlace oficial para revisar el articulado."
                     results.append(Item(
@@ -917,7 +802,7 @@ def scrape_bulletin(now: datetime) -> tuple[list[Item], dict[str, Any]]:
             full = f"{title} {body}"
             relevant, tags, score = is_relevant(full)
             anchor_text = normalize(full)
-            sector_anchor = any(term in anchor_text for term in ("leche", "lact", "tambo", "bovino", "ganad", "agropec", "agricultur", "animal", "forraj", "semilla", "veterin", "inta", "senasa"))
+            sector_anchor = any(term in anchor_text for term in ("leche", "lact", "tambo", "bovino", "ganad", "agropec", "agricultur", "animal", "forraj", "semilla", "veterin", "senasa"))
             if not relevant or not sector_anchor:
                 continue
             pub = extract_published_date(article_soup) or edition_date
@@ -1146,7 +1031,7 @@ def render_html(items: list[Item], weather: dict[str, Any], statuses: list[dict[
 
     return f'''<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Radar INTA Lechero – {day_label}</title>
+<title>BOT 384520 – {day_label}</title>
 <style>
 :root{{--ink:#1f2937;--muted:#64748b;--line:#e2e8f0;--paper:#f8fafc;--green:#1f6b4f;--gold:#b7791f;}}
 *{{box-sizing:border-box}}body{{margin:0;background:var(--paper);color:var(--ink);font:16px/1.55 Arial,Helvetica,sans-serif}}
@@ -1165,7 +1050,7 @@ h2{{font-size:21px;margin:0 0 14px}}h2 span{{font-size:13px;color:var(--muted);f
 .weather-card{{border:1px solid var(--line);border-radius:8px;padding:14px}}table{{width:100%;border-collapse:collapse;font-size:13px}}td,th{{padding:9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}}
 footer{{text-align:center;padding:28px;color:var(--muted);font-size:12px}}@media(max-width:620px){{.metrics{{grid-template-columns:repeat(2,1fr)}}header h1{{font-size:24px}}}}
 </style></head><body>
-<header><h1>Radar INTA Lechero</h1><p>Noticias, eventos, normativa y contexto agroclimático del sector lácteo</p>
+<header><h1>BOT 384520</h1><p>Noticias, eventos, normativa y contexto agroclimático del sector lácteo</p>
 <p>Informe del {day_label} · Ventana: {window_start.strftime('%d/%m/%Y %H:%M')} a {now.strftime('%d/%m/%Y %H:%M')} ({TZ_NAME})</p></header>
 <main>
 <div class="metrics"><div class="metric"><strong>{counts['total']}</strong><span>Publicaciones relevantes</span></div><div class="metric"><strong>{counts['noticias']}</strong><span>Noticias</span></div><div class="metric"><strong>{counts['eventos']}</strong><span>Eventos</span></div><div class="metric"><strong>{counts['normativa']}</strong><span>Normas detectadas</span></div></div>
@@ -1173,7 +1058,7 @@ footer{{text-align:center;padding:28px;color:var(--muted);font-size:12px}}@media
 {''.join(cards)}
 <section class="sources"><h2>Estado de las fuentes consultadas</h2><p>Una fuente sin resultados no significa que no haya publicado: puede no exponer RSS, bloquear solicitudes automatizadas o requerir JavaScript.</p><table><thead><tr><th>Fuente</th><th>Estado</th><th>Resultados</th></tr></thead><tbody>{source_rows}</tbody></table>
 <h3>Redes sociales incluidas en el monitoreo</h3><p>Instagram y X pueden limitar el acceso automatizado. Este informe solo muestra metadatos públicos que la página haya entregado; no inicia sesión ni afirma haber leído publicaciones que no fueron accesibles.</p><table><thead><tr><th>Perfil</th><th>Estado de acceso</th></tr></thead><tbody>{social_rows or '<tr><td colspan="2">No hubo perfiles accesibles en esta ejecución.</td></tr>'}</tbody></table></section>
-</main><footer>Radar INTA Lechero · Recolección automática sin IA · Las fuentes originales prevalecen sobre el resumen. Verificar vigencia y alcance de toda normativa en el texto oficial.</footer>
+</main><footer>BOT 384520 · Recolección automática sin IA · Las fuentes originales prevalecen sobre el resumen. Verificar vigencia y alcance de toda normativa en el texto oficial.</footer>
 </body></html>'''
 
 
@@ -1246,7 +1131,7 @@ def write_xls(path: Path, items: list[Item], weather: dict[str, Any], statuses: 
 
     meta = book.add_sheet("Sobre el informe")
     metadata = [
-        ("Informe", f"Radar INTA Lechero – {now.strftime('%d/%m/%Y')}"),
+        ("Informe", f"BOT 384520 – {now.strftime('%d/%m/%Y')}"),
         ("Zona horaria", TZ_NAME),
         ("Ventana de publicaciones", f"{window_start.isoformat()} a {now.isoformat()}"),
         ("Criterio", "Publicaciones con fecha identificable dentro de las últimas 24 horas. Los datos meteorológicos son una consulta de contexto."),
@@ -1270,10 +1155,10 @@ def run() -> tuple[Path, Path, int]:
     window_start = now - timedelta(hours=24)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     suffix = now.strftime("%d%m%y")
-    html_path = OUTPUT_DIR / f"noticiasinta_{suffix}.html"
-    xls_path = OUTPUT_DIR / f"noticiasinta_{suffix}.xls"
+    html_path = OUTPUT_DIR / f"bot384520_{suffix}.html"
+    xls_path = OUTPUT_DIR / f"bot384520_{suffix}.xls"
 
-    LOG.info("Inicio de Radar INTA Lechero: %s (%s)", now.isoformat(), TZ_NAME)
+    LOG.info("Inicio de BOT 384520: %s (%s)", now.isoformat(), TZ_NAME)
     LOG.info("Ventana: %s – %s", window_start.isoformat(), now.isoformat())
 
     all_items: list[Item] = []
