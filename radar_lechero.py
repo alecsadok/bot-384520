@@ -1095,7 +1095,7 @@ def write_xls(path: Path, items: list[Item], weather: dict[str, Any], statuses: 
     sheet.set_panes_frozen(True)
     sheet.set_horz_split_pos(1)
     sheet.set_remove_splits(True)
-    sheet.autofilter(0, 0, max(1, len(items)), len(headers) - 1)
+    # xlwt no implementa autofiltros en hojas Worksheet; se omite para evitar el fallo.
 
     weather_sheet = book.add_sheet("Clima SMN")
     weather_headers = ["Tipo de dato", "Localidad / área", "Dato", "Actualización / consulta", "Fuente"]
