@@ -1,4 +1,4 @@
-# Radar INTA Lechero
+# BOT 384520
 
 Recolección diaria de noticias, eventos, normativa y contexto meteorológico para comunicación del sector lechero argentino. El proyecto utiliza scraping de páginas públicas, RSS, Google News RSS, la Primera Sección del Boletín Oficial y endpoints públicos del SMN. **No utiliza inteligencia artificial ni APIs de modelos generativos.**
 
@@ -6,10 +6,10 @@ Recolección diaria de noticias, eventos, normativa y contexto meteorológico pa
 
 Cada ejecución crea o actualiza únicamente los archivos correspondientes a la fecha local del informe dentro de `informes/`:
 
-- `noticiasinta_DDMMYY.html`
-- `noticiasinta_DDMMYY.xls`
+- `bot384520_DDMMYY.html`
+- `bot384520_DDMMYY.xls`
 
-Ejemplo: `noticiasinta_101126.html` y `noticiasinta_101126.xls` para el 10/11/2026.
+Ejemplo: `bot384520_101126.html` y `bot384520_101126.xls` para el 10/11/2026.
 
 El filtro editorial toma publicaciones con fecha identificable dentro de las 24 horas anteriores al momento de ejecución. Se registra la fecha y hora de publicación, la fuente, el enlace original, las etiquetas temáticas y, cuando corresponde, la fecha futura de un evento. La información meteorológica se muestra en un bloque separado porque es una consulta de contexto actual y no una noticia publicada.
 
@@ -19,7 +19,7 @@ El workflow `.github/workflows/radar-diario.yml` programa el script todos los d�
 
 El workflow instala dependencias, ejecuta el script y guarda los informes en el propio repositorio mediante un commit de `github-actions[bot]`. Requiere que GitHub Actions esté habilitado, que el archivo esté en la rama predeterminada y que el workflow tenga permiso `contents: write`. GitHub advierte que los eventos programados pueden demorarse en períodos de alta demanda; la hora indicada es la hora programada, no una garantía de inicio al segundo.
 
-## Instalación en `alecsadok/radarIL`
+## Instalación en `el repositorio configurado`
 
 Copiar al directorio raíz del repositorio:
 
@@ -37,7 +37,7 @@ Crear la carpeta `informes/` (puede contener un `.gitkeep` para que exista antes
 
 ### Portales de noticias y especialidad
 
-Argentina.gob.ar, INTA Informa, SENASA, Todo Lechería, Agrofy News/Lechería, Bichos de Campo, Agrolink, Clarín Rural, Agroverdad, Mundo Agro Córdoba, Agritotal, Revista Chacra/Infobae, La Nación Campo, UNL, Infocampo, Agroempresario, Portal Lechero, OCLA, FCV-UNL Eventos, Colegio de Médicos Veterinarios de Santa Fe, Mundo Rural, InfoLáctea, INTA, Secretaría de Agricultura, INDEC y Bolsa de Comercio de Rosario.
+Argentina.gob.ar, SENASA, Todo Lechería, Agrofy News/Lechería, Bichos de Campo, Agrolink, Clarín Rural, Agroverdad, Mundo Agro Córdoba, Agritotal, Revista Chacra/Infobae, La Nación Campo, UNL, Infocampo, Agroempresario, Portal Lechero, OCLA, FCV-UNL Eventos, Colegio de Médicos Veterinarios de Santa Fe, Mundo Rural, InfoLáctea, Secretaría de Agricultura, INDEC y Bolsa de Comercio de Rosario.
 
 ### Búsqueda transversal
 
