@@ -44,8 +44,9 @@ USER_AGENT = (
     "RadarINTALechero/1.0 (+https://github.com/alecsadok/radarIL; "
     "contact: repository-maintainer) Python requests"
 )
-REQUEST_TIMEOUT = (8, 18)
-MAX_WORKERS = 10
+REQUEST_TIMEOUT = (15, 35)
+MAX_WORKERS = 4
+MIN_HOST_INTERVAL = 1.5
 MAX_LINKS_PER_SOURCE = 12
 MAX_FEED_ITEMS_PER_SOURCE = 15
 MAX_GOOGLE_NEWS_ITEMS = 30
@@ -330,13 +331,29 @@ class Item:
         return d
 
 
+
+# Control de frecuencia por dominio: evita ráfagas cuando se consultan muchos
+# artículos de un mismo medio. No intenta ocultar ni alterar la identidad del bot.
+_HOST_REQUEST_LOCK = __import__("threading").Lock()
+_HOST_LAST_REQUEST: dict[str, float] = {}
+
+def wait_for_host(url: str) -> None:
+    host = urlparse(url).netloc.lower()
+    with _HOST_REQUEST_LOCK:
+        now_mono = time.monotonic()
+        previous = _HOST_LAST_REQUEST.get(host, 0.0)
+        remaining = MIN_HOST_INTERVAL - (now_mono - previous)
+        if remaining > 0:
+            time.sleep(remaining)
+        _HOST_LAST_REQUEST[host] = time.monotonic()
+
 def make_session() -> requests.Session:
     session = requests.Session()
     retry = Retry(
-        total=2,
-        connect=2,
-        read=2,
-        backoff_factor=0.6,
+        total=3,
+        connect=3,
+        read=3,
+        backoff_factor=1.2,
         status_forcelist=(429, 500, 502, 503, 504),
         allowed_methods=frozenset(["GET", "HEAD"]),
         respect_retry_after_header=True,
@@ -541,6 +558,7 @@ def host_matches(a: str, b: str) -> bool:
 
 def fetch(url: str, timeout: tuple[int, int] = REQUEST_TIMEOUT) -> tuple[str, str, int]:
     try:
+        wait_for_host(url)
         response = make_session().get(url, timeout=timeout, allow_redirects=True)
         content_type = response.headers.get("content-type", "")
         if response.status_code >= 400:
@@ -706,7 +724,7 @@ def scan_web_source(source: dict[str, str], now: datetime) -> tuple[list[Item], 
     if not results and not links:
         status_row["estado"] = "consultada; sin resultados detectables en el HTML público"
     elif links:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             futures = [executor.submit(parse_article, u, t, c, name, now) for u, t, c in links]
             for future in concurrent.futures.as_completed(futures):
                 try:
@@ -864,7 +882,7 @@ def scrape_bulletin(now: datetime) -> tuple[list[Item], dict[str, Any]]:
                 candidates[link] = txt[:300]
 
     candidate_pairs = [(href, title_hint) for href, title_hint in list(candidates.items())[:50] if href != BOLETIN_URL]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = [executor.submit(fetch, href) for href, _ in candidate_pairs]
         for future, (href, title_hint) in zip(futures, candidate_pairs):
             try:
@@ -931,7 +949,7 @@ def scrape_bulletin(now: datetime) -> tuple[list[Item], dict[str, Any]]:
 # Redes sociales (consulta de páginas públicas, sin autenticación)
 # ---------------------------------------------------------------------------
 def scan_social_profile(url: str, now: datetime) -> tuple[list[Item], dict[str, Any]]:
-    raw, final_url, status = fetch(url, timeout=(3, 6))
+    raw, final_url, status = fetch(url, timeout=(10, 25))
     handle = urlparse(url).path.strip("/")
     if not raw:
         return [], {"fuente": handle, "url": url, "estado": f"acceso restringido o bloqueado (HTTP {status or 'error'})"}
@@ -1296,7 +1314,7 @@ def run() -> tuple[Path, Path, int]:
     # Consulta de perfiles públicos: no se autentica ni se fuerza el acceso a contenido restringido.
     social_statuses: list[dict[str, Any]] = []
     if os.getenv("RADAR_SCAN_SOCIAL", "1").lower() not in ("0", "false", "no"):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
             futures = {executor.submit(scan_social_profile, url, now): url for url in SOCIAL_PROFILES}
             for future in concurrent.futures.as_completed(futures):
                 try:
