@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """BOT 384520: monitoreo de noticias, eventos y normativa sobre lechería y ganado bovino.
 
-Combina fuentes RSS y portales con búsqueda web asistida por IA opcional.
-Los resultados encontrados con IA se verifican contra las páginas originales.
+Combina fuentes públicas, RSS gratuito y análisis con un modelo de IA abierto
+ejecutado localmente. No utiliza APIs de inferencia remotas.
 """
 
 from __future__ import annotations
@@ -842,106 +842,16 @@ def scan_google_news(now: datetime) -> tuple[list[Item], dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# Descubrimiento ampliado con IA y búsqueda web (opcional)
+# IA local gratuita: inferencia con Ollama y modelo Qwen3
 # ---------------------------------------------------------------------------
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:1.7b")
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
-OLLAMA_MODEL_LIBRARY_URL = "https://ollama.com/library/qwen3"
+OLLAMA_MODEL_LIBRARY_URL = "https://ollama.com/library/qwen3:1.7b"
 AI_EVENT_HORIZON_DAYS = 90
 MAX_BULLETIN_CANDIDATES = 50
 MAX_BULLETIN_AI_DOCS = 12
 MAX_GOOGLE_NEWS_AI_ITEMS = 48
 LOCAL_AI_BATCH_SIZE = 8
-
-AI_ITEM_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "title": {"type": "string"},
-        "url": {"type": "string"},
-        "source_name": {"type": "string"},
-        "country": {"type": "string", "enum": ["Argentina", "Otro"]},
-        "publication_date": {"type": "string"},
-        "kind": {"type": "string", "enum": ["news", "event"]},
-        "category": {"type": "string"},
-        "summary": {"type": "string"},
-        "event_date": {"type": "string"},
-        "location": {"type": "string"},
-        "organizer": {"type": "string"},
-        "relevance": {"type": "integer"},
-    },
-    "required": [
-        "title", "url", "source_name", "country", "publication_date", "kind",
-        "category", "summary", "event_date", "location", "organizer", "relevance",
-    ],
-    "additionalProperties": False,
-}
-
-def ai_output_text(payload: dict[str, Any]) -> str:
-    """Extrae texto estructurado desde la respuesta de Responses API."""
-    chunks: list[str] = []
-    for output in payload.get("output", []):
-        if output.get("type") != "message":
-            continue
-        for part in output.get("content", []):
-            if part.get("type") == "output_text" and isinstance(part.get("text"), str):
-                chunks.append(part["text"])
-    return "\n".join(chunks).strip()
-
-
-def ai_search_prompt(now: datetime) -> str:
-    today = now.strftime("%d/%m/%Y")
-    from_date = (now - timedelta(hours=24)).strftime("%d/%m/%Y")
-    event_limit = (now + timedelta(days=AI_EVENT_HORIZON_DAYS)).strftime("%d/%m/%Y")
-    return f"""
-Fecha y hora local de Argentina: {today}, {now.strftime('%H:%M')} ({TZ_NAME}).
-
-Actuás como investigador periodístico especializado en la cadena láctea argentina.
-Usá la búsqueda web para descubrir publicaciones REALES de medios, organismos,
-universidades, asociaciones, cooperativas, entidades técnicas y organizadores de
-eventos de Argentina. No respondas con una lista de ideas ni con búsquedas sugeridas:
-buscá páginas concretas y devolvé sus enlaces originales.
-
-Hacé búsquedas diferenciadas para cubrir:
-1. Noticias publicadas entre {from_date} y {today} sobre tambos, producción de leche,
-   precio al productor, costos, rentabilidad, industria láctea, cooperativas,
-   inversiones, exportaciones e importaciones de lácteos y políticas para el sector.
-2. Ganado lechero: vacas en ordeño, reproducción, genética, crianza y recría de terneros
-   y terneras, sanidad, mastitis, bienestar, instalaciones, ordeño y tecnología.
-3. Alimentación de rodeos: raciones, nutrición, pasturas, alfalfa, forrajes, reservas,
-   silaje, maíz para silo, sorgo forrajero, agua y manejo alimentario.
-4. Jornadas, cursos, capacitaciones, seminarios, congresos, días de campo, exposiciones,
-   ferias, webinars y reuniones técnicas vinculadas con lechería, tambos y ganado lechero.
-   Para eventos, aceptá páginas publicadas antes de las últimas 24 horas, pero el evento
-   debe tener una fecha futura entre hoy y {event_limit}.
-5. Noticias y actividades de entidades, universidades, facultades de veterinaria,
-   asociaciones de productores, cooperativas y organizaciones técnicas de las cuencas
-   lecheras argentinas. Cubrí todo el país, especialmente Santa Fe, Córdoba, Buenos Aires,
-   Entre Ríos, La Pampa y Santiago del Estero.
-
-Criterios editoriales obligatorios:
-- El foco es ARGENTINA y la actividad lechera/tambera.
-- Priorizá ganado lechero. Podés incluir noticias sanitarias o de manejo bovino general
-  solo si tienen impacto claro en vacas, vaquillonas o terneros de tambo.
-- Excluí noticias centradas en carne, faena, feedlots, novillos y ganadería de carne.
-- Excluí noticias exclusivamente agrícolas (maíz para grano, soja, trigo, mercados de
-  granos) sin relación concreta con alimentación animal o tambos.
-- No incluyas pronósticos, estado del tiempo ni alertas meteorológicas generales.
-  El fenómeno El Niño solo corresponde si la publicación explica efectos sobre tambos,
-  ganado, pasturas o alimentación.
-- No inventes títulos, enlaces, fechas, lugares, organizadores ni actividades.
-- Cada URL debe ser la página original de la noticia o del evento, no el buscador, una
-  página de resultados, una portada genérica ni un enlace inventado.
-- No confundas la fecha de publicación con la fecha futura del evento.
-- Si no podés verificar un dato, devolvé una cadena vacía.
-- Devolvé hasta 24 resultados, priorizando los más importantes y variados. Evitá duplicados.
-- Para noticias, la fecha de publicación debe corresponder a las últimas 24 horas.
-- Para eventos, informá la fecha exacta del evento y, si están visibles, localidad y
-  organizador. No incluyas eventos pasados ni eventos sin fecha futura verificable.
-
-Respondé únicamente con el objeto JSON del esquema solicitado. En "summary" escribí
-una descripción concreta y breve, sin agregar datos que la fuente no respalde.
-"".strip()
-
 
 
 def local_ai_is_available() -> tuple[bool, str]:
