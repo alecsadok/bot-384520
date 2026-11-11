@@ -1,6 +1,6 @@
 # BOT 384520
 
-Monitoreo diario de noticias, eventos y normativa de interés para la **lechería argentina, los tambos y el ganado lechero**. El proyecto combina scraping de páginas públicas, RSS, Google News RSS, la Primera Sección del Boletín Oficial y búsqueda web asistida por IA cuando está configurada.
+Monitoreo diario de noticias, eventos y normativa de interés para la **lechería argentina, los tambos y el ganado lechero**. Combina scraping de páginas públicas, RSS, búsquedas gratuitas en Google News RSS, análisis local con IA y consulta de la Primera Sección del Boletín Oficial.
 
 ## Enfoque editorial
 
@@ -20,14 +20,14 @@ El filtro combina términos temáticos con reglas de exclusión. Una noticia sob
 
 BOT 384520 utiliza **Qwen3 1.7B** ejecutado localmente mediante Ollama. El modelo se descarga en el runner de GitHub Actions y procesa allí los textos; no se conecta a OpenAI, Gemini ni a otro proveedor de inferencia remota.
 
-- **Sin API keys:** no requiere `OPENAI_API_KEY`, claves de terceros ni cuentas de IA.
+- **Sin API keys:** no requiere claves de proveedores de IA ni cuentas de servicios externos.
 - **Sin cobro por tokens:** las inferencias se ejecutan localmente; no se envían prompts a una API facturada.
 - **Búsqueda de noticias:** utiliza Google News RSS, un feed público sin clave de API, con consultas ampliadas por temas lecheros y de ganado.
 - **Agenda:** agrega búsquedas de jornadas, cursos, seminarios, congresos, exposiciones, webinars y días de campo publicados durante los últimos 30 días. Solo conserva eventos con fecha futura verificable, hasta 90 días.
 - **Análisis normativo:** Qwen3 revisa el texto extraído de la Primera Sección del Boletín Oficial, identifica el impacto concreto sobre tambos y ganado lechero, y debe aportar una cita literal del documento para justificar su selección.
 - **Exclusiones:** las reglas determinísticas siguen bloqueando noticias centradas en carne, faena, feedlots y cultivos sin relación con alimentación animal.
 
-El modelo Qwen3 1.7B se distribuye bajo licencia Apache 2.0 y ocupa aproximadamente 1,4 GB en la biblioteca de Ollama. La inferencia usa CPU/RAM del runner, no créditos de IA. Referencias: [modelo Qwen3 en Ollama](https://ollama.com/library/qwen3:1.7b), [licencia Apache 2.0 del modelo](https://ollama.com/library/qwen3:1.7b) y [documentación de la API local de Ollama](https://github.com/ollama/ollama/blob/main/docs/api.md).
+El modelo Qwen3 1.7B de Ollama ocupa aproximadamente **1,4 GB**, está publicado bajo licencia Apache 2.0 y admite inferencia local. La ejecución consume CPU y memoria del runner, no créditos de IA. Referencias: [modelo y tamaño en Ollama](https://ollama.com/library/qwen3:1.7b), [licencia del modelo Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) y [documentación de la API local de Ollama](https://github.com/ollama/ollama/blob/main/docs/api.md).
 
 ### Cómo se ejecuta
 
@@ -64,13 +64,13 @@ La presencia de una fuente generalista no implica que se incorporen todas sus pu
 
 ### Búsqueda transversal
 
-Consultas temáticas en Google News RSS, acotadas a la ventana reciente (`when:1d`). Las búsquedas se orientan a lechería, ganado bovino, sanidad, reproducción, alimentación animal y El Niño.
+Consultas temáticas gratuitas en Google News RSS: noticias recientes (`when:1d`) y anuncios de eventos (`when:30d`). Las búsquedas se orientan a lechería, ganado bovino, sanidad, reproducción, alimentación animal, economía del tambo, tecnología y agenda de jornadas, cursos, seminarios y congresos. Los eventos se verifican en la página original.
 
 ### Boletín Oficial
 
 Consulta de la **Primera Sección – Legislación y Avisos Oficiales**. El recolector identifica las fichas individuales de la edición, descarga el texto de cada publicación candidata y extrae título, área, tipo de norma, fecha y enlace oficial.
 
-Cuando existe `OPENAI_API_KEY`, una llamada de análisis estructurado evalúa en conjunto los documentos candidatos. La selección exige relevancia sectorial, una puntuación mínima y una cita breve que debe coincidir literalmente con el texto oficial. El resultado incluye resumen, impacto potencial, actores alcanzados y puntos que conviene verificar. Si la API no está configurada o falla, se aplica el filtro temático de respaldo y se deja constancia en el estado de la fuente.
+El análisis normativo utiliza el modelo local para evaluar en conjunto los documentos candidatos. La selección exige relevancia sectorial, una puntuación mínima y una cita breve que debe coincidir literalmente con el texto oficial. El resultado incluye resumen, impacto potencial, actores alcanzados y puntos que conviene verificar. Si Ollama o el modelo no están disponibles, se aplica el filtro temático de respaldo y se deja constancia en el estado de la fuente.
 
 La integración toma como referencia el flujo general de extracción y análisis de [Chequeado Botletín Oficial](https://github.com/chequeado/botletin-oficial), pero BOT 384520 mantiene un recolector independiente, orientado a la normativa que afecta a tambos, ganado lechero y producción láctea. No necesita la base de datos, API ni frontend de ese proyecto.
 
@@ -82,10 +82,10 @@ Se consultan perfiles públicos de Instagram y X sin autenticación. Cuando el H
 
 ## Criterios de calidad y límites
 
-- Las noticias deben tener fecha de publicación verificable dentro de las últimas 24 horas. Los eventos encontrados con IA pueden haberse anunciado antes, pero solo se conservan cuando la fecha de realización es futura, está visible en la página original y se encuentra dentro de los próximos 90 días. Si no se puede verificar la fecha del evento, queda fuera.
+- Las noticias se limitan a publicaciones recientes. La agenda también busca anuncios de los últimos 30 días y conserva eventos cuya fecha de realización es futura, aparece en la página original y se encuentra dentro de los próximos 90 días. Si no se puede verificar la fecha del evento, queda fuera.
 - No se inventan fechas de publicación. Las fechas futuras de eventos se extraen del texto cuando pueden identificarse.
 - Se eliminan duplicados por título normalizado.
-- En las fuentes RSS y portales, los resúmenes son extractivos. En los resultados de búsqueda web con IA, la síntesis es generada por el modelo y se conserva únicamente después de verificar el enlace y el contenido de la página original.
+- En fuentes RSS y portales, los resúmenes son extractivos. La IA local puede reformular los resúmenes de los candidatos recuperados y clasificar su pertinencia; no sustituye la verificación del enlace y la fecha en la fuente original.
 - El análisis de normativa se realiza con IA local y debe incluir evidencia literal de la publicación oficial; si el modelo no está disponible, se utiliza el filtro temático de respaldo. Ningún resumen reemplaza la lectura del articulado ni el asesoramiento legal.
 - El filtro editorial reduce resultados ajenos al ganado, pero una mención contextual puede requerir revisión humana. Conviene revisar titulares y enlaces antes de redistribuir el informe.
 - El scraping está sujeto a cambios de diseño, disponibilidad, robots, límites de frecuencia, JavaScript y condiciones de cada fuente. Por eso cada informe incluye una tabla de estado de fuentes.
