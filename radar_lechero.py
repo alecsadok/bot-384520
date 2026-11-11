@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """BOT 384520: monitoreo de noticias, eventos y normativa sobre lechería y ganado bovino.
 
-No utiliza modelos de IA ni servicios de generación de texto. Los resúmenes son
-extractivos y los textos sobre normativa se construyen mediante reglas explícitas.
+Combina fuentes RSS y portales con búsqueda web asistida por IA opcional.
+Los resultados encontrados con IA se verifican contra las páginas originales.
 """
 
 from __future__ import annotations
@@ -216,6 +216,9 @@ class Item:
     section: str = "Noticia"
     tags: list[str] | None = None
     event_date: str = ""
+    event_location: str = ""
+    event_organizer: str = ""
+    date_label: str = "Publicado"
     legal_copy: str = ""
     relevance: int = 0
 
@@ -752,6 +755,371 @@ def scan_google_news(now: datetime) -> tuple[list[Item], dict[str, Any]]:
                 ))
     return results, {"fuente": "Google News RSS", "url": "https://news.google.com/", "estado": "consultada", "resultados": len(results)}
 
+
+# ---------------------------------------------------------------------------
+# Descubrimiento ampliado con IA y búsqueda web (opcional)
+# ---------------------------------------------------------------------------
+OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
+OPENAI_DOCS_URL = "https://developers.openai.com/api/docs/guides/tools-web-search"
+AI_DEFAULT_MODEL = "gpt-6-luna"
+AI_MAX_CANDIDATES = 24
+AI_EVENT_HORIZON_DAYS = 90
+
+AI_ITEM_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "url": {"type": "string"},
+        "source_name": {"type": "string"},
+        "country": {"type": "string", "enum": ["Argentina", "Otro"]},
+        "publication_date": {"type": "string"},
+        "kind": {"type": "string", "enum": ["news", "event"]},
+        "category": {"type": "string"},
+        "summary": {"type": "string"},
+        "event_date": {"type": "string"},
+        "location": {"type": "string"},
+        "organizer": {"type": "string"},
+        "relevance": {"type": "integer"},
+    },
+    "required": [
+        "title", "url", "source_name", "country", "publication_date", "kind",
+        "category", "summary", "event_date", "location", "organizer", "relevance",
+    ],
+    "additionalProperties": False,
+}
+
+def ai_output_text(payload: dict[str, Any]) -> str:
+    """Extrae texto estructurado desde la respuesta de Responses API."""
+    chunks: list[str] = []
+    for output in payload.get("output", []):
+        if output.get("type") != "message":
+            continue
+        for part in output.get("content", []):
+            if part.get("type") == "output_text" and isinstance(part.get("text"), str):
+                chunks.append(part["text"])
+    return "\n".join(chunks).strip()
+
+
+def ai_search_prompt(now: datetime) -> str:
+    today = now.strftime("%d/%m/%Y")
+    from_date = (now - timedelta(hours=24)).strftime("%d/%m/%Y")
+    event_limit = (now + timedelta(days=AI_EVENT_HORIZON_DAYS)).strftime("%d/%m/%Y")
+    return f"""
+Fecha y hora local de Argentina: {today}, {now.strftime('%H:%M')} ({TZ_NAME}).
+
+Actuás como investigador periodístico especializado en la cadena láctea argentina.
+Usá la búsqueda web para descubrir publicaciones REALES de medios, organismos,
+universidades, asociaciones, cooperativas, entidades técnicas y organizadores de
+eventos de Argentina. No respondas con una lista de ideas ni con búsquedas sugeridas:
+buscá páginas concretas y devolvé sus enlaces originales.
+
+Hacé búsquedas diferenciadas para cubrir:
+1. Noticias publicadas entre {from_date} y {today} sobre tambos, producción de leche,
+   precio al productor, costos, rentabilidad, industria láctea, cooperativas,
+   inversiones, exportaciones e importaciones de lácteos y políticas para el sector.
+2. Ganado lechero: vacas en ordeño, reproducción, genética, crianza y recría de terneros
+   y terneras, sanidad, mastitis, bienestar, instalaciones, ordeño y tecnología.
+3. Alimentación de rodeos: raciones, nutrición, pasturas, alfalfa, forrajes, reservas,
+   silaje, maíz para silo, sorgo forrajero, agua y manejo alimentario.
+4. Jornadas, cursos, capacitaciones, seminarios, congresos, días de campo, exposiciones,
+   ferias, webinars y reuniones técnicas vinculadas con lechería, tambos y ganado lechero.
+   Para eventos, aceptá páginas publicadas antes de las últimas 24 horas, pero el evento
+   debe tener una fecha futura entre hoy y {event_limit}.
+5. Noticias y actividades de entidades, universidades, facultades de veterinaria,
+   asociaciones de productores, cooperativas y organizaciones técnicas de las cuencas
+   lecheras argentinas. Cubrí todo el país, especialmente Santa Fe, Córdoba, Buenos Aires,
+   Entre Ríos, La Pampa y Santiago del Estero.
+
+Criterios editoriales obligatorios:
+- El foco es ARGENTINA y la actividad lechera/tambera.
+- Priorizá ganado lechero. Podés incluir noticias sanitarias o de manejo bovino general
+  solo si tienen impacto claro en vacas, vaquillonas o terneros de tambo.
+- Excluí noticias centradas en carne, faena, feedlots, novillos y ganadería de carne.
+- Excluí noticias exclusivamente agrícolas (maíz para grano, soja, trigo, mercados de
+  granos) sin relación concreta con alimentación animal o tambos.
+- No incluyas pronósticos, estado del tiempo ni alertas meteorológicas generales.
+  El fenómeno El Niño solo corresponde si la publicación explica efectos sobre tambos,
+  ganado, pasturas o alimentación.
+- No inventes títulos, enlaces, fechas, lugares, organizadores ni actividades.
+- Cada URL debe ser la página original de la noticia o del evento, no el buscador, una
+  página de resultados, una portada genérica ni un enlace inventado.
+- No confundas la fecha de publicación con la fecha futura del evento.
+- Si no podés verificar un dato, devolvé una cadena vacía.
+- Devolvé hasta 24 resultados, priorizando los más importantes y variados. Evitá duplicados.
+- Para noticias, la fecha de publicación debe corresponder a las últimas 24 horas.
+- Para eventos, informá la fecha exacta del evento y, si están visibles, localidad y
+  organizador. No incluyas eventos pasados ni eventos sin fecha futura verificable.
+
+Respondé únicamente con el objeto JSON del esquema solicitado. En "summary" escribí
+una descripción concreta y breve, sin agregar datos que la fuente no respalde.
+"".strip()
+
+
+def ai_title_matches(candidate_title: str, page_title: str) -> bool:
+    def tokens(value: str) -> set[str]:
+        return {
+            token for token in re.findall(r"[a-z0-9]{4,}", normalize(value))
+            if token not in {"para", "desde", "sobre", "entre", "segun", "tras", "esta", "este"}
+        }
+    wanted = tokens(candidate_title)
+    actual = tokens(page_title)
+    if not wanted or not actual:
+        return False
+    overlap = len(wanted & actual) / max(1, len(wanted))
+    return overlap >= 0.35 or normalize(candidate_title) in normalize(page_title)
+
+
+def ai_hard_excluded(text: str) -> bool:
+    """Aplica exclusiones inequívocas aun cuando el modelo proponga un resultado."""
+    ntext = normalize(text)
+    dairy = any(contains_term(ntext, term) for term in DAIRY_EDITORIAL_TERMS)
+    specific_livestock = any(contains_term(ntext, term) for term in SPECIFIC_LIVESTOCK_TERMS)
+    meat = any(contains_term(ntext, term) for term in MEAT_FOCUS_TERMS)
+    crop = any(contains_term(ntext, term) for term in CROP_FOCUS_TERMS)
+    feed_context = any(contains_term(ntext, term) for term in (
+        "maíz para silo", "silo de maíz", "silaje", "maíz picado", "sorgo forrajero",
+        "ración bovina", "raciones bovinas", "ración para vacas", "alimento para el ganado",
+        "nutrición bovina", "alimentación bovina", "forrajes", "reservas forrajeras",
+        "pasturas", "alfalfa", "suplementación",
+    ))
+    if meat and not dairy:
+        return True
+    if crop and not (dairy or specific_livestock or feed_context):
+        return True
+    return False
+
+
+def verify_ai_candidate(candidate: dict[str, Any], now: datetime) -> Item | None:
+    """Abre la página original y comprueba contenido, fechas y pertinencia."""
+    title_hint = clean_text(str(candidate.get("title") or ""), 300)
+    url = str(candidate.get("url") or "").strip()
+    parsed_url = urlparse(url)
+    if (
+        len(title_hint) < 12
+        or parsed_url.scheme not in ("http", "https")
+        or not parsed_url.netloc
+        or any(host in parsed_url.netloc.lower() for host in ("google.", "bing.com", "search.yahoo."))
+    ):
+        return None
+
+    raw, final_url, status = fetch(url, timeout=(10, 25))
+    if not raw or status >= 400:
+        return None
+    soup = BeautifulSoup(raw, "html.parser")
+
+    og_title = soup.find("meta", attrs={"property": "og:title"})
+    h1 = soup.find("h1")
+    title = clean_text(
+        (og_title.get("content") if og_title else "")
+        or (h1.get_text(" ", strip=True) if h1 else "")
+        or title_hint,
+        300,
+    )
+    if not ai_title_matches(title_hint, title):
+        return None
+
+    description = ""
+    for attrs in (
+        {"property": "og:description"},
+        {"name": "description"},
+        {"name": "twitter:description"},
+    ):
+        tag = soup.find("meta", attrs=attrs)
+        if tag and tag.get("content"):
+            description = clean_text(tag.get("content"), 900)
+            break
+
+    article_node = soup.find("article") or soup.find("main") or soup.body or soup
+    body_text = clean_text(article_node.get_text(" ", strip=True), 12000)
+    if len(body_text) < 80 and len(description) < 40:
+        return None
+
+    full_text = f"{title} {description} {body_text[:10000]}"
+    if ai_hard_excluded(full_text):
+        return None
+
+    kind = str(candidate.get("kind") or "").strip().lower()
+    if kind not in ("news", "event"):
+        return None
+
+    page_published = extract_published_date(soup)
+    model_published = parse_datetime(candidate.get("publication_date"))
+    published = page_published or model_published
+
+    if kind == "news":
+        # Para noticias no se acepta una fecha estimada: debe poder verificarse
+        # en metadatos de la página o en el contenido publicado por el medio.
+        visible_dates = {d.date() for d in extract_text_dates(body_text[:6000])}
+        if page_published is None and (
+            model_published is None or model_published.date() not in visible_dates
+        ):
+            return None
+        if not is_within_window(published, now):
+            return None
+        section = "Noticia"
+        event_date = ""
+        location = ""
+        organizer = ""
+        date_label = "Publicado"
+    else:
+        # Los eventos pueden haber sido anunciados días antes; se conservan
+        # si la actividad todavía no ocurrió y su fecha aparece en la página.
+        event_date_value = parse_datetime(candidate.get("event_date"))
+        page_dates = extract_text_dates(body_text[:10000])
+        page_date_set = {d.date() for d in page_dates}
+        if event_date_value is None or event_date_value.date() not in page_date_set:
+            # Respaldo: tomar la primera fecha futura que realmente figura en la página.
+            future_dates = [
+                d for d in page_dates
+                if now.date() <= d.date() <= (now + timedelta(days=AI_EVENT_HORIZON_DAYS)).date()
+            ]
+            if not future_dates:
+                return None
+            event_date_value = min(future_dates)
+        if not (now.date() <= event_date_value.date() <= (now + timedelta(days=AI_EVENT_HORIZON_DAYS)).date()):
+            return None
+        section = "Evento"
+        event_date = event_date_value.strftime("%d/%m/%Y")
+        location = clean_text(str(candidate.get("location") or ""), 180)
+        organizer = clean_text(str(candidate.get("organizer") or ""), 180)
+        date_label = "Publicado" if published else "Detectado"
+        if published is None:
+            published = now
+
+    if published is None:
+        return None
+
+    category = clean_text(str(candidate.get("category") or "Lechería"), 80)
+    summary = clean_text(str(candidate.get("summary") or ""), 480)
+    if not summary:
+        summary = summarize(description or body_text, 360)
+
+    try:
+        score = max(1, min(100, int(candidate.get("relevance", 75))))
+    except (TypeError, ValueError):
+        score = 75
+    source_name = clean_text(str(candidate.get("source_name") or parsed_url.netloc), 120)
+
+    return Item(
+        title=title,
+        url=final_url or url,
+        source=f"IA web search · {source_name}",
+        published_at=published,
+        summary=summary,
+        section=section,
+        tags=[category],
+        event_date=event_date,
+        event_location=location,
+        event_organizer=organizer,
+        date_label=date_label,
+        relevance=score,
+    )
+
+
+def scan_ai_web_search(now: datetime) -> tuple[list[Item], dict[str, Any]]:
+    """Busca noticias y agenda con OpenAI Web Search; funciona sin bloquear el radar."""
+    status_row = {
+        "fuente": "Búsqueda web con IA",
+        "url": OPENAI_DOCS_URL,
+        "estado": "consultada",
+        "resultados": 0,
+    }
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    enabled = os.getenv("RADAR_AI_WEB_SEARCH", "1").strip().lower() not in ("0", "false", "no")
+    if not enabled:
+        status_row["estado"] = "desactivada por configuración"
+        return [], status_row
+    if not api_key:
+        status_row["estado"] = "no configurada: falta el secreto OPENAI_API_KEY"
+        return [], status_row
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "items": {
+                "type": "array",
+                "items": AI_ITEM_SCHEMA,
+            }
+        },
+        "required": ["items"],
+        "additionalProperties": False,
+    }
+    payload = {
+        "model": os.getenv("OPENAI_MODEL", AI_DEFAULT_MODEL),
+        "reasoning": {"effort": "low"},
+        "tools": [{"type": "web_search", "search_context_size": "low"}],
+        "tool_choice": "required",
+        "max_output_tokens": 6000,
+        "input": [
+            {
+                "role": "system",
+                "content": (
+                    "Sos un agente de búsqueda periodística. Debés buscar en la web, "
+                    "contrastar la página original y devolver datos estructurados. "
+                    "Nunca inventes fuentes, enlaces, fechas ni detalles de eventos."
+                ),
+            },
+            {"role": "user", "content": ai_search_prompt(now)},
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "bot384520_dairy_radar",
+                "strict": True,
+                "schema": schema,
+            }
+        },
+    }
+
+    try:
+        response = make_session().post(
+            OPENAI_RESPONSES_URL,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=(20, 180),
+        )
+        if response.status_code >= 400:
+            detail = clean_text(response.text, 500)
+            status_row["estado"] = f"error API HTTP {response.status_code}: {detail}"
+            LOG.warning("Búsqueda web IA: %s", status_row["estado"])
+            return [], status_row
+        response_data = response.json()
+        output_text = ai_output_text(response_data)
+        if not output_text:
+            status_row["estado"] = "la API no devolvió contenido estructurado"
+            LOG.warning("Búsqueda web IA: respuesta sin texto")
+            return [], status_row
+        data = json.loads(output_text)
+        candidates = data.get("items", [])
+        if not isinstance(candidates, list):
+            raise ValueError("El campo items no es una lista")
+
+        verified: list[Item] = []
+        seen_urls: set[str] = set()
+        for candidate in candidates[:AI_MAX_CANDIDATES]:
+            if not isinstance(candidate, dict) or candidate.get("country") != "Argentina":
+                continue
+            url = str(candidate.get("url") or "").rstrip("/")
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            try:
+                item = verify_ai_candidate(candidate, now)
+                if item:
+                    verified.append(item)
+            except Exception as exc:
+                LOG.debug("No se pudo verificar resultado IA %s: %s", url, exc)
+
+        status_row["resultados"] = len(verified)
+        status_row["candidatos"] = len(candidates)
+        status_row["estado"] = f"búsqueda completada; {len(verified)} verificados de {len(candidates)} candidatos"
+        return verified, status_row
+    except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
+        status_row["estado"] = f"error de búsqueda/procesamiento: {clean_text(str(exc), 260)}"
+        LOG.warning("Búsqueda web IA no disponible: %s", exc)
+        return [], status_row
+
+
 # ---------------------------------------------------------------------------
 # Boletín Oficial: Primera Sección (Legislación y Avisos Oficiales)
 # ---------------------------------------------------------------------------
@@ -967,6 +1335,18 @@ def deduplicate(items: list[Item]) -> list[Item]:
     return sorted(best.values(), key=lambda x: (x.section != "Normativa", x.section != "Evento", -x.relevance, x.published_at), reverse=False)
 
 
+def should_keep_item(item: Item, now: datetime) -> bool:
+    if is_within_window(item.published_at, now):
+        return True
+    if item.section == "Evento" and item.source.startswith("IA web search"):
+        event_dt = parse_datetime(item.event_date)
+        return bool(
+            event_dt
+            and now.date() <= event_dt.date() <= (now + timedelta(days=AI_EVENT_HORIZON_DAYS)).date()
+        )
+    return False
+
+
 def esc(value: Any) -> str:
     return html.escape(str(value or ""), quote=True)
 
@@ -989,11 +1369,18 @@ def render_html(items: list[Item], statuses: list[dict[str, Any]], now: datetime
         for item in subset:
             tags = " · ".join(item.tags or [])
             pub = item.published_at.strftime("%d/%m/%Y %H:%M")
-            event = f'<p class="event-date">Fecha del evento: <strong>{esc(item.event_date)}</strong></p>' if item.event_date else ""
+            event_details = []
+            if item.event_date:
+                event_details.append(f"Fecha: {esc(item.event_date)}")
+            if item.event_location:
+                event_details.append(f"Lugar: {esc(item.event_location)}")
+            if item.event_organizer:
+                event_details.append(f"Organiza: {esc(item.event_organizer)}")
+            event = f'<p class="event-date">{" · ".join(event_details)}</p>' if event_details else ""
             legal = f'<div class="copy"><h4>Copy institucional sugerido (borrador automático)</h4><pre>{esc(item.legal_copy)}</pre></div>' if item.legal_copy else ""
             cards.append(
                 '<article class="item">'
-                f'<div class="meta"><span>{esc(item.source)}</span><span>Publicado: {pub}</span></div>'
+                f'<div class="meta"><span>{esc(item.source)}</span><span>{esc(item.date_label)}: {pub}</span></div>'
                 f'<h3><a href="{esc(item.url)}" target="_blank" rel="noopener">{esc(item.title)}</a></h3>'
                 f'<p>{esc(item.summary)}</p>{event}'
                 f'<p class="tags">{esc(tags)}</p>{legal}'
@@ -1031,7 +1418,7 @@ footer{{text-align:center;padding:28px;color:var(--muted);font-size:12px}}@media
 {''.join(cards)}
 <section class="sources"><h2>Estado de las fuentes consultadas</h2><p>Una fuente sin resultados no significa que no haya publicado: puede no exponer RSS, bloquear solicitudes automatizadas o requerir JavaScript.</p><table><thead><tr><th>Fuente</th><th>Estado</th><th>Resultados</th></tr></thead><tbody>{source_rows}</tbody></table>
 <h3>Redes sociales incluidas en el monitoreo</h3><p>Instagram y X pueden limitar el acceso automatizado. Este informe solo muestra metadatos públicos que la página haya entregado; no inicia sesión ni afirma haber leído publicaciones que no fueron accesibles.</p><table><thead><tr><th>Perfil</th><th>Estado de acceso</th></tr></thead><tbody>{social_rows or '<tr><td colspan="2">No hubo perfiles accesibles en esta ejecución.</td></tr>'}</tbody></table></section>
-</main><footer>BOT 384520 · Recolección automática sin IA · Las fuentes originales prevalecen sobre el resumen. Verificar vigencia y alcance de toda normativa en el texto oficial.</footer>
+</main><footer>BOT 384520 · Búsqueda asistida por IA y filtros automáticos · Las fuentes originales prevalecen sobre el resumen. Verificar vigencia y alcance de toda normativa en el texto oficial.</footer>
 </body></html>'''
 
 
@@ -1088,6 +1475,21 @@ def run() -> tuple[Path, Path, int]:
     except Exception as exc:
         statuses.append({"fuente": "Google News RSS", "url": "https://news.google.com/", "estado": f"error: {exc}"})
 
+    # Búsqueda ampliada con IA: noticias de las últimas 24 h y eventos próximos.
+    try:
+        ai_items, ai_status = scan_ai_web_search(now)
+        all_items.extend(ai_items)
+        statuses.append(ai_status)
+        LOG.info("Búsqueda web con IA: %s resultados verificados", len(ai_items))
+    except Exception as exc:
+        statuses.append({
+            "fuente": "Búsqueda web con IA",
+            "url": OPENAI_DOCS_URL,
+            "estado": f"error: {clean_text(str(exc), 260)}",
+            "resultados": 0,
+        })
+        LOG.exception("Error en búsqueda web con IA")
+
     # Legislación de la Primera Sección del Boletín Oficial.
     try:
         legal_items, legal_status = scrape_bulletin(now)
@@ -1113,7 +1515,7 @@ def run() -> tuple[Path, Path, int]:
                     social_statuses.append({"fuente": futures[future], "url": futures[future], "estado": f"error: {exc}", "social": True})
         statuses.extend(social_statuses)
 
-    items = deduplicate([item for item in all_items if is_within_window(item.published_at, now)])
+    items = deduplicate([item for item in all_items if should_keep_item(item, now)])
     # Orden explícito: normas, eventos y después noticias; dentro de cada bloque, más recientes primero.
     priority = {"Normativa": 0, "Evento": 1, "Noticia": 2}
     items.sort(key=lambda x: (priority.get(x.section, 9), -x.relevance, -x.published_at.timestamp()))
