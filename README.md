@@ -1,8 +1,5 @@
 # BOT 384520
 
-Radar editorial diario para detectar **noticias, investigaciones, novedades técnicas y actividades publicables en el Instagram de INTA Lechero**. Reúne fuentes del INTA, organismos, universidades, organizaciones del sector y medios periodísticos especializados.
-
-El objetivo no es medir qué institución publica más ni separar noticias “institucionales” de “periodísticas” como si unas valieran más que otras. Una investigación del INTA, una noticia de Todo Lechería o una cobertura de Agrofy pueden ser opciones igualmente válidas: se evalúa el contenido, su actualidad, su utilidad para la audiencia y la evidencia disponible.
 
 ## Criterio editorial
 
