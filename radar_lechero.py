@@ -47,12 +47,26 @@ MIN_HOST_INTERVAL = 1.5
 MAX_LINKS_PER_SOURCE = 12
 MAX_FEED_ITEMS_PER_SOURCE = 15
 MAX_GOOGLE_NEWS_ITEMS = 12
-MAX_GOOGLE_NEWS_TOTAL = 70
+MAX_GOOGLE_NEWS_TOTAL = 90
+NEWS_WINDOW_DAYS = 7
+MAX_GOOGLE_NEWS_ENRICHMENTS = 36
 
-# Fuentes editoriales y técnicas. Se priorizan sitios oficiales y especializados.
+# Fuentes directas: INTA tiene prioridad; se complementa con organismos,
+# universidades, observatorios y medios sectoriales. Los resultados siempre
+# deben superar el filtro temático y la revisión editorial.
 WEB_SOURCES: list[dict[str, str]] = [
-    {"name": "Argentina.gob.ar – Noticias", "url": "https://www.argentina.gob.ar/noticias", "kind": "institucional"},
+    {"name": "INTA – Noticias nacionales", "url": "https://www.argentina.gob.ar/inta/noticias", "kind": "inta"},
+    {"name": "INTA – Centro Regional Santa Fe", "url": "https://www.argentina.gob.ar/inta/cr-santa-fe/noticias", "kind": "inta"},
+    {"name": "INTA – Centro Regional Entre Ríos", "url": "https://www.argentina.gob.ar/inta/cr-entre-rios/noticias", "kind": "inta"},
+    {"name": "INTA – Centro Regional Córdoba", "url": "https://www.argentina.gob.ar/inta/cr-cordoba/noticias", "kind": "inta"},
+    {"name": "INTA – Centro Regional Corrientes", "url": "https://www.argentina.gob.ar/inta/cr-corrientes/noticias", "kind": "inta"},
+    {"name": "INTA – Centro Regional Misiones", "url": "https://www.argentina.gob.ar/inta/cr-misiones/noticias", "kind": "inta"},
     {"name": "SENASA", "url": "https://www.argentina.gob.ar/senasa", "kind": "institucional"},
+    {"name": "Secretaría de Agricultura", "url": "https://www.argentina.gob.ar/economia/agricultura", "kind": "institucional"},
+    {"name": "CONICET – Prensa", "url": "https://www.conicet.gov.ar/prensa/", "kind": "academica"},
+    {"name": "UNL – Noticias", "url": "https://www.unl.edu.ar/noticias/", "kind": "academica"},
+    {"name": "FCV UNL – Eventos", "url": "https://www.fcv.unl.edu.ar/eventos/", "kind": "academica"},
+    {"name": "OCLA", "url": "https://www.ocla.org.ar/", "kind": "organizacion_sectorial"},
     {"name": "Todo Lechería", "url": "https://www.todolecheria.com.ar/noticias/", "kind": "especializada"},
     {"name": "Agrofy – Lechería", "url": "https://news.agrofy.com.ar/lecheria", "kind": "especializada"},
     {"name": "Agrofy News", "url": "https://news.agrofy.com.ar/", "kind": "agro"},
@@ -64,16 +78,12 @@ WEB_SOURCES: list[dict[str, str]] = [
     {"name": "Agritotal", "url": "https://www.agritotal.com/", "kind": "agro"},
     {"name": "Infobae – Revista Chacra", "url": "https://www.infobae.com/revista-chacra/", "kind": "agro"},
     {"name": "La Nación – Campo", "url": "https://www.lanacion.com.ar/economia/campo/", "kind": "agro"},
-    {"name": "UNL – Noticias", "url": "https://www.unl.edu.ar/noticias/", "kind": "academica"},
     {"name": "Infocampo", "url": "https://www.infocampo.com.ar/", "kind": "agro"},
     {"name": "Agroempresario", "url": "https://agroempresario.com/", "kind": "agro"},
     {"name": "Portal Lechero", "url": "https://portalechero.com/", "kind": "especializada"},
-    {"name": "OCLA", "url": "https://www.ocla.org.ar/", "kind": "especializada"},
-    {"name": "FCV UNL – Eventos", "url": "https://www.fcv.unl.edu.ar/eventos/", "kind": "eventos"},
     {"name": "Colegio de Médicos Veterinarios de Santa Fe", "url": "https://cmver.com.ar/", "kind": "profesional"},
     {"name": "Mundo Rural", "url": "https://mundorural.com.ar/", "kind": "agro"},
     {"name": "InfoLáctea", "url": "https://www.infolactea.com.ar/", "kind": "especializada"},
-    {"name": "Secretaría de Agricultura", "url": "https://www.argentina.gob.ar/economia/agricultura", "kind": "institucional"},
     {"name": "INDEC", "url": "https://www.indec.gob.ar/", "kind": "estadistica"},
     {"name": "Bolsa de Comercio de Rosario", "url": "https://www.bcr.com.ar/es/mercados/investigacion-y-desarrollo/informativo-semanal", "kind": "economia"},
 ]
@@ -82,15 +92,10 @@ WEB_SOURCES: list[dict[str, str]] = [
 BOLETIN_URL = "https://www.boletinoficial.gob.ar/seccion/primera"
 BOLETIN_HOME = "https://www.boletinoficial.gob.ar/"
 
-# Perfiles solicitados. Se consultan como páginas públicas; no se inicia sesión,
-# no se evita CAPTCHA ni se accede a endpoints privados. Meta/HTML no siempre
-# contiene publicaciones, por lo que se registra cada limitación de acceso.
-SOCIAL_PROFILES = [
-    "https://www.instagram.com/chacradebarrow",
-    "https://www.instagram.com/eeafamailla",
-    "https://x.com/pamperotv?lang=es",
-    "https://x.com/senasaar",
-]
+# La lectura automatizada de Instagram/X no es una fuente estable ni completa.
+# Se deja vacía por defecto; solo se activa si se agregan perfiles y el contenido
+# público puede verificarse sin iniciar sesión ni eludir controles.
+SOCIAL_PROFILES: list[str] = []
 
 # ---------------------------------------------------------------------------
 # Diccionario temático. Se puede ampliar en keywords_extra.txt sin tocar código.
@@ -223,6 +228,11 @@ class Item:
     date_label: str = "Publicado"
     legal_copy: str = ""
     relevance: int = 0
+    discovered_via_google_news: bool = False
+    editorial_group: str = "Otros medios y fuentes"
+    editorial_priority: int = 50
+    instagram_angle: str = ""
+    format_suggestion: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -364,11 +374,22 @@ LIVESTOCK_EDITORIAL_TERMS = [
     "ración bovina", "raciones bovinas", "ración para vacas", "raciones para vacas",
     "alimento para el ganado", "alimentos para el ganado", "balanceado bovino", "grano húmedo",
     "estrés calórico", "estrés térmico", "golpe de calor", "índice de temperatura y humedad",
-    "ith", "sequía", "inundación", "falta de agua", "escasez de agua",
+    "ith",
 ]
 SPECIFIC_LIVESTOCK_TERMS = [
     term for term in LIVESTOCK_EDITORIAL_TERMS
     if term not in ("ganadería", "ganado", "veterinaria")
+]
+CLIMATE_IMPACT_TERMS = [
+    "el niño", "enso", "sequía", "inundación", "falta de agua", "escasez de agua",
+    "lluvia", "lluvias", "precipitaciones", "pronóstico", "agrometeorología",
+    "meteorológico", "meteorológica",
+]
+FEED_CONTEXT_TERMS = [
+    "maíz para silo", "silo de maíz", "silaje", "maíz picado", "sorgo forrajero",
+    "ración bovina", "raciones bovinas", "ración para vacas", "alimento para el ganado",
+    "nutrición bovina", "alimentación bovina", "forrajes", "reservas forrajeras",
+    "pasturas", "alfalfa", "suplementación", "cadena forrajera",
 ]
 MEAT_FOCUS_TERMS = [
     "carne bovina", "carne vacuna", "carne de res", "mercado de carnes",
@@ -388,17 +409,20 @@ def editorially_relevant(text: str) -> bool:
     dairy = any(contains_term(ntext, term) for term in DAIRY_EDITORIAL_TERMS)
     livestock = any(contains_term(ntext, term) for term in LIVESTOCK_EDITORIAL_TERMS)
     specific_livestock = any(contains_term(ntext, term) for term in SPECIFIC_LIVESTOCK_TERMS)
-    el_nino = contains_term(ntext, "el niño") or contains_term(ntext, "enso")
+    climate = any(contains_term(ntext, term) for term in CLIMATE_IMPACT_TERMS)
+    feed_context = any(contains_term(ntext, term) for term in FEED_CONTEXT_TERMS)
     meat = any(contains_term(ntext, term) for term in MEAT_FOCUS_TERMS)
     crop = any(contains_term(ntext, term) for term in CROP_FOCUS_TERMS)
 
     if meat and not dairy:
         return False
-    if el_nino:
-        return True
-    if crop and not (dairy or specific_livestock):
+    # Clima y El Niño solo interesan si la fuente explica un efecto concreto
+    # sobre tambos, animales, pasturas o alimentación.
+    if climate and not (dairy or specific_livestock or feed_context):
         return False
-    return dairy or livestock
+    if crop and not (dairy or specific_livestock or feed_context):
+        return False
+    return dairy or livestock or feed_context
 
 def classify(text: str) -> tuple[list[str], int]:
     ntext = normalize(text)
@@ -483,7 +507,7 @@ def extract_published_date(soup: BeautifulSoup, fallback: datetime | None = None
     return fallback
 
 
-def is_within_window(dt: datetime | None, now: datetime, hours: int = 24) -> bool:
+def is_within_window(dt: datetime | None, now: datetime, hours: int = NEWS_WINDOW_DAYS * 24) -> bool:
     if dt is None:
         return False
     return now - timedelta(hours=hours) <= dt <= now + timedelta(minutes=10)
@@ -628,7 +652,7 @@ def parse_article(
     context_hint: str,
     source_name: str,
     now: datetime,
-    allow_upcoming_event: bool = False,
+    allow_upcoming_event: bool = True,
     fallback_published_at: datetime | None = None,
 ) -> Item | None:
     raw, final_url, status = fetch(url)
@@ -735,22 +759,66 @@ def scan_web_source(source: dict[str, str], now: datetime) -> tuple[list[Item], 
 
 
 def google_news_queries() -> list[tuple[str, str]]:
-    """Búsquedas gratuitas por RSS: noticias recientes y agenda de los próximos meses."""
+    """Búsquedas gratuitas: INTA primero, otras instituciones después y medios como complemento."""
     return [
-        ('(lechería OR lechero OR tambo OR tambos) Argentina when:1d', "news"),
-        ('("vacas lecheras" OR "rodeo lechero" OR "producción de leche" OR terneras) Argentina when:1d', "news"),
-        ('(mastitis OR brucelosis bovina OR tuberculosis bovina OR queratoconjuntivitis OR sanidad bovina) Argentina when:1d', "news"),
-        ('(reproducción bovina OR genética lechera OR vaquillonas OR crianza de terneros) Argentina when:1d', "news"),
-        ('("precio de la leche" OR "precio al productor" OR costos del tambo OR rentabilidad lechera) Argentina when:1d', "news"),
-        ('(OCLA OR "industria láctea" OR exportaciones lácteas OR cooperativas lácteas) Argentina when:1d', "news"),
-        ('(forrajes OR alfalfa OR "maíz para silo" OR pasturas OR raciones OR nutrición bovina) (tambo OR vacas lecheras) Argentina when:1d', "news"),
-        ('(SENASA OR trazabilidad animal OR identificación electrónica bovina OR RENSPA) (lechería OR bovinos OR tambos) Argentina when:1d', "news"),
-        ('("El Niño" OR ENSO) (tambo OR vacas lecheras OR ganadería bovina OR pasturas OR forrajes) Argentina when:1d', "news"),
-        ('(robotización OR automatización OR ordeño robotizado OR tecnología para tambos OR maquinaria lechera) Argentina when:1d', "news"),
+        ('site:argentina.gob.ar/inta (lechería OR tambo OR leche OR "vacas lecheras" OR forrajes) when:7d', "news"),
+        ('site:argentina.gob.ar/inta/cr-santa-fe/noticias (lechería OR tambo OR leche OR vacas OR forrajes) when:7d', "news"),
+        ('site:argentina.gob.ar/inta/cr-entre-rios/noticias (lechería OR tambo OR leche OR vacas OR forrajes) when:7d', "news"),
+        ('site:argentina.gob.ar/inta/cr-cordoba/noticias (lechería OR tambo OR leche OR vacas OR forrajes) when:7d', "news"),
+        ('site:argentina.gob.ar/inta/cr-corrientes/noticias (lechería OR tambo OR leche OR vacas OR forrajes) when:7d', "news"),
+        ('(lechería OR lechero OR tambo OR tambos OR "producción de leche") Argentina when:7d', "news"),
+        ('("vacas lecheras" OR "rodeo lechero" OR terneras OR vaquillonas OR "crianza de terneros") Argentina when:7d', "news"),
+        ('(mastitis OR brucelosis bovina OR tuberculosis bovina OR queratoconjuntivitis OR sanidad bovina) Argentina when:7d', "news"),
+        ('(reproducción bovina OR genética lechera OR fertilidad OR crianza artificial) Argentina when:7d', "news"),
+        ('("precio de la leche" OR "precio al productor" OR costos del tambo OR rentabilidad lechera OR OCLA) Argentina when:7d', "news"),
+        ('(forrajes OR alfalfa OR "maíz para silo" OR pasturas OR raciones OR nutrición bovina) (tambo OR vacas lecheras) Argentina when:7d', "news"),
+        ('(SENASA OR trazabilidad animal OR identificación electrónica bovina OR RENSPA) (lechería OR bovinos OR tambos) Argentina when:7d', "news"),
+        ('(robotización OR automatización OR ordeño robotizado OR tecnología para tambos OR maquinaria lechera) Argentina when:7d', "news"),
+        ('site:conicet.gov.ar (leche OR lechería OR bovinos OR mastitis OR reproducción animal OR forrajes) Argentina when:7d', "news"),
+        ('site:unl.edu.ar (leche OR lechería OR bovinos OR mastitis OR tambo OR forrajes) when:7d', "news"),
         ('(jornada OR jornadas OR curso OR capacitación OR seminario OR congreso OR "día de campo" OR webinar) (lechería OR tambo OR "vacas lecheras") Argentina when:30d', "event"),
         ('(encuentro OR taller OR charla OR exposición OR feria OR actualización técnica) (producción de leche OR ganado lechero OR tambos) Argentina when:30d', "event"),
         ('(jornada OR curso OR seminario OR capacitación OR congreso) (lechería OR tambo OR bovinos) (Santa Fe OR Córdoba OR Entre Ríos OR Buenos Aires OR La Pampa) when:30d', "event"),
     ]
+
+
+def enrich_google_news_item(item: Item, now: datetime) -> Item:
+    """Intenta resolver el enlace de Google News y ampliar el resumen con texto público."""
+    raw, final_url, status = fetch(item.url, timeout=(10, 25))
+    if not raw:
+        return item
+    host = (urlparse(final_url).hostname or "").lower()
+    if host.endswith("google.com") or host.endswith("googleusercontent.com"):
+        return item
+
+    soup = BeautifulSoup(raw, "html.parser")
+    og_title = soup.find("meta", attrs={"property": "og:title"})
+    h1 = soup.find("h1")
+    page_title = clean_text(
+        (og_title.get("content") if og_title else "")
+        or (h1.get_text(" ", strip=True) if h1 else ""),
+        300,
+    )
+    description = ""
+    for attrs in ({"property": "og:description"}, {"name": "description"}, {"name": "twitter:description"}):
+        tag = soup.find("meta", attrs=attrs)
+        if tag and tag.get("content"):
+            description = clean_text(tag.get("content"), 1100)
+            break
+    article_node = soup.find("article") or soup.find("main") or soup.body or soup
+    body_text = clean_text(article_node.get_text(" ", strip=True), 14000)
+    if len(body_text) >= 120:
+        item.summary = summarize(body_text, 1000)
+    elif len(description) >= 50:
+        item.summary = description
+    if len(page_title) >= 10:
+        item.title = page_title
+    page_date = extract_published_date(soup)
+    if page_date and is_within_window(page_date, now):
+        item.published_at = page_date
+        item.date_label = "Publicado"
+    item.url = final_url or item.url
+    return item
 
 
 def scan_google_news(now: datetime) -> tuple[list[Item], dict[str, Any]]:
@@ -803,12 +871,13 @@ def scan_google_news(now: datetime) -> tuple[list[Item], dict[str, Any]]:
                     link,
                     title,
                     summary,
-                    f"Google News · {source_name}",
+                    source_name,
                     now,
                     allow_upcoming_event=True,
                     fallback_published_at=pub,
                 )
                 if item:
+                    item.discovered_via_google_news = True
                     results.append(item)
             elif is_within_window(pub, now):
                 seen.add(link)
@@ -820,13 +889,14 @@ def scan_google_news(now: datetime) -> tuple[list[Item], dict[str, Any]]:
                 results.append(Item(
                     title=title,
                     url=link,
-                    source=f"Google News · {source_name}",
+                    source=source_name,
                     published_at=pub,
                     summary=summary or "Resultado detectado por Google News; abrir la fuente para consultar el contenido completo.",
                     section="Evento" if is_event else "Noticia",
                     tags=tags,
                     event_date=guess_event_date(title_summary, now) if is_event else "",
                     relevance=score if relevant else 15,
+                    discovered_via_google_news=True,
                 ))
 
             if len(results) >= MAX_GOOGLE_NEWS_TOTAL:
@@ -834,12 +904,24 @@ def scan_google_news(now: datetime) -> tuple[list[Item], dict[str, Any]]:
         if len(results) >= MAX_GOOGLE_NEWS_TOTAL:
             break
 
+    enrichable = [item for item in results if not item.event_date_verified][:MAX_GOOGLE_NEWS_ENRICHMENTS]
+    if enrichable:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            futures = [executor.submit(enrich_google_news_item, item, now) for item in enrichable]
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    future.result()
+                except Exception as exc:
+                    LOG.debug("No se pudo ampliar un resultado de Google News: %s", exc)
+
     return results, {
         "fuente": "Google News RSS (búsqueda gratuita)",
         "url": "https://news.google.com/",
         "estado": "consultada",
         "candidatos_eventos": event_candidates,
         "resultados": len(results),
+        "articulos_ampliados": len(enrichable),
+        "ventana_noticias_dias": NEWS_WINDOW_DAYS,
     }
 
 
