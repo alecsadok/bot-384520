@@ -16,25 +16,26 @@ No se incorporan pronósticos meteorológicos, observaciones del tiempo ni alert
 
 El filtro combina términos temáticos con reglas de exclusión. Una noticia sobre un cultivo puede ingresar cuando el contenido la relaciona expresamente con forrajes, silaje, nutrición o alimentación animal. Una noticia sobre El Niño puede ingresar como tema específico, aunque no sea una nota meteorológica de pronóstico.
 
-## Búsqueda web asistida por IA
+## IA local y gratuita
 
-Cuando está disponible el secreto `OPENAI_API_KEY`, el radar utiliza la **Responses API de OpenAI con búsqueda web** para descubrir publicaciones que pueden no aparecer en los RSS o en el rastreo de portales. La IA busca noticias recientes y también eventos futuros, analiza la pertinencia para tambos y ganado lechero y devuelve los datos en un formato estructurado.
+BOT 384520 utiliza **Qwen3 1.7B** ejecutado localmente mediante Ollama. El modelo se descarga en el runner de GitHub Actions y procesa allí los textos; no se conecta a OpenAI, Gemini ni a otro proveedor de inferencia remota.
 
-- Noticias: publicaciones de Argentina de las últimas 24 horas.
-- Eventos: actividades con fecha futura verificable dentro de los próximos 90 días, aunque el anuncio original se haya publicado antes.
-- Temas: producción y economía lechera, vacas en ordeño, sanidad, reproducción, crianza y recría, nutrición, forrajes, tecnología, jornadas, cursos, seminarios, congresos y días de campo.
-- Exclusiones: noticias de carne, faena, feedlots, agricultura sin vínculo con el ganado y meteorología general.
+- **Sin API keys:** no requiere `OPENAI_API_KEY`, claves de terceros ni cuentas de IA.
+- **Sin cobro por tokens:** las inferencias se ejecutan localmente; no se envían prompts a una API facturada.
+- **Búsqueda de noticias:** utiliza Google News RSS, un feed público sin clave de API, con consultas ampliadas por temas lecheros y de ganado.
+- **Agenda:** agrega búsquedas de jornadas, cursos, seminarios, congresos, exposiciones, webinars y días de campo publicados durante los últimos 30 días. Solo conserva eventos con fecha futura verificable, hasta 90 días.
+- **Análisis normativo:** Qwen3 revisa el texto extraído de la Primera Sección del Boletín Oficial, identifica el impacto concreto sobre tambos y ganado lechero, y debe aportar una cita literal del documento para justificar su selección.
+- **Exclusiones:** las reglas determinísticas siguen bloqueando noticias centradas en carne, faena, feedlots y cultivos sin relación con alimentación animal.
 
-Los resultados propuestos por la IA no se publican automáticamente: el script abre cada página original y comprueba el título, el contenido y las fechas. Los eventos deben mostrar el día y mes en la página; las noticias deben tener una fecha de publicación verificable dentro de la ventana. Los datos de localidad y organizador solo se muestran cuando aparecen en el contenido de la fuente. Si la clave no está configurada o la API falla, el radar continúa con sus fuentes RSS y filtros habituales.
+El modelo Qwen3 1.7B se distribuye bajo licencia Apache 2.0 y ocupa aproximadamente 1,4 GB en la biblioteca de Ollama. La inferencia usa CPU/RAM del runner, no créditos de IA. Referencias: [modelo Qwen3 en Ollama](https://ollama.com/library/qwen3:1.7b), [licencia Apache 2.0 del modelo](https://ollama.com/library/qwen3:1.7b) y [documentación de la API local de Ollama](https://github.com/ollama/ollama/blob/main/docs/api.md).
 
-### Activar la IA en GitHub Actions
+### Cómo se ejecuta
 
-1. Crear una clave de API desde el [panel de API de OpenAI](https://platform.openai.com/api-keys) y tener habilitada la facturación de API.
-2. En el repositorio, entrar a **Settings → Secrets and variables → Actions → New repository secret**.
-3. Crear un secreto llamado exactamente `OPENAI_API_KEY` y pegar allí la clave. **No guardar la clave en el código, README ni en este chat.**
-4. En **Actions**, ejecutar manualmente **BOT 384520 diario**. En el informe, revisar la fila **Búsqueda web con IA** para confirmar si pudo buscar y cuántos resultados verificó.
+El workflow instala Ollama, descarga el modelo y lo inicia en `127.0.0.1`. La carpeta de pesos se guarda en la caché de GitHub Actions para evitar descargar 1,4 GB en cada ejecución. No se necesita configurar ningún secreto.
 
-El modelo configurado por defecto es `gpt-6-astra`, tanto para la búsqueda web como para el análisis de normativa. Se puede cambiar la búsqueda con `OPENAI_MODEL` y el análisis del Boletín Oficial con `OPENAI_BULLETIN_MODEL`. La búsqueda se desactiva con `RADAR_AI_WEB_SEARCH=0`. El uso de la API se factura por separado de una suscripción de ChatGPT; el costo depende de los tokens y de las búsquedas web realizadas. Consultar los [precios vigentes de la API](https://developers.openai.com/api/docs/pricing).
+El repositorio BOT 384520 es público. GitHub indica que los runners estándar alojados por GitHub son gratuitos y sin límite de minutos para repositorios públicos. Esta condición dejaría de aplicar si el repositorio se convierte en privado o se utilizan runners de mayor tamaño o servicios adicionales facturados. Ver [facturación de GitHub Actions](https://docs.github.com/en/actions/concepts/billing-and-usage) y [tipos de runners](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job).
+
+Si Ollama o el modelo no están disponibles, BOT 384520 continúa con los filtros y resúmenes convencionales. El informe deja constancia del estado de la IA local; no intenta conectarse a una API paga como alternativa.
 
 ## Qué genera
 
@@ -85,10 +86,10 @@ Se consultan perfiles públicos de Instagram y X sin autenticación. Cuando el H
 - No se inventan fechas de publicación. Las fechas futuras de eventos se extraen del texto cuando pueden identificarse.
 - Se eliminan duplicados por título normalizado.
 - En las fuentes RSS y portales, los resúmenes son extractivos. En los resultados de búsqueda web con IA, la síntesis es generada por el modelo y se conserva únicamente después de verificar el enlace y el contenido de la página original.
-- El análisis de normativa puede ser asistido por IA y siempre incluye la referencia a la publicación oficial; si la IA no está disponible, se utiliza un resumen de respaldo basado en reglas. Ningún resumen reemplaza la lectura del articulado ni el asesoramiento legal.
+- El análisis de normativa se realiza con IA local y debe incluir evidencia literal de la publicación oficial; si el modelo no está disponible, se utiliza el filtro temático de respaldo. Ningún resumen reemplaza la lectura del articulado ni el asesoramiento legal.
 - El filtro editorial reduce resultados ajenos al ganado, pero una mención contextual puede requerir revisión humana. Conviene revisar titulares y enlaces antes de redistribuir el informe.
 - El scraping está sujeto a cambios de diseño, disponibilidad, robots, límites de frecuencia, JavaScript y condiciones de cada fuente. Por eso cada informe incluye una tabla de estado de fuentes.
-- El script no consulta servicios meteorológicos ni usa cookies privadas, login o cuentas de usuario. La búsqueda y el análisis con IA requieren el secreto de API descrito arriba.
+- El script no consulta servicios meteorológicos ni usa cookies privadas, login o cuentas de usuario. La IA se ejecuta localmente; no utiliza claves API ni proveedores de inferencia pagos.
 
 ## Prueba local
 
