@@ -874,8 +874,8 @@ def ai_event_date_visible(event_date: datetime, body_text: str) -> bool:
     visible_dates = extract_text_dates(body_text)
     if event_date.date() in {d.date() for d in visible_dates}:
         return True
-    # Si la página ya muestra ese mismo día y mes con otro año, no se
-    # corrige silenciosamente el año: podría ser una edición pasada del evento.
+    # Si aparece el mismo día/mes con otro año explícito, no asumimos que
+    # la actividad se repite en el año que propone el modelo.
     if any(d.day == event_date.day and d.month == event_date.month for d in visible_dates):
         return False
     months = [
@@ -890,7 +890,6 @@ def ai_event_date_visible(event_date: datetime, body_text: str) -> bool:
     month_pattern = rf"\b0?{day}\b.{{0,55}}\b{month}\b"
     numeric_pattern = rf"\b0?{day}[/.-]0?{event_date.month}\b"
     return bool(re.search(month_pattern, text) or re.search(numeric_pattern, text))
-
 
 def ai_hard_excluded(text: str) -> bool:
     """Aplica exclusiones inequívocas aun cuando el modelo proponga un resultado."""
