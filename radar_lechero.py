@@ -46,8 +46,8 @@ MAX_WORKERS = 4
 MIN_HOST_INTERVAL = 1.5
 MAX_LINKS_PER_SOURCE = 12
 MAX_FEED_ITEMS_PER_SOURCE = 15
-MAX_GOOGLE_NEWS_ITEMS = 12
-MAX_GOOGLE_NEWS_TOTAL = 90
+MAX_GOOGLE_NEWS_ITEMS = 8
+MAX_GOOGLE_NEWS_TOTAL = 120
 NEWS_WINDOW_DAYS = 7
 MAX_GOOGLE_NEWS_ENRICHMENTS = 36
 MAX_EDITORIAL_AI_ITEMS = 48
@@ -779,7 +779,7 @@ def scan_web_source(source: dict[str, str], now: datetime) -> tuple[list[Item], 
 
 
 def google_news_queries() -> list[tuple[str, str]]:
-    """Búsquedas gratuitas: INTA primero, otras instituciones después y medios como complemento."""
+    """Búsquedas gratuitas y temáticamente balanceadas en fuentes y medios diversos."""
     return [
         ('site:argentina.gob.ar/inta (lechería OR tambo OR leche OR "vacas lecheras" OR forrajes) when:7d', "news"),
         ('site:argentina.gob.ar/inta/cr-santa-fe/noticias (lechería OR tambo OR leche OR vacas OR forrajes) when:7d', "news"),
@@ -920,10 +920,10 @@ def scan_google_news(now: datetime) -> tuple[list[Item], dict[str, Any]]:
                     discovered_via_google_news=True,
                 ))
 
-            if len(results) >= MAX_GOOGLE_NEWS_TOTAL:
-                break
-        if len(results) >= MAX_GOOGLE_NEWS_TOTAL:
-            break
+    # Todas las consultas se ejecutan antes del recorte final para que una
+    # búsqueda de una sola fuente no agote el cupo y desplace a las demás.
+    results.sort(key=lambda item: (item.relevance, item.published_at.timestamp()), reverse=True)
+    results = results[:MAX_GOOGLE_NEWS_TOTAL]
 
     enrichable = [item for item in results if not item.event_date_verified][:MAX_GOOGLE_NEWS_ENRICHMENTS]
     if enrichable:
@@ -944,6 +944,7 @@ def scan_google_news(now: datetime) -> tuple[list[Item], dict[str, Any]]:
         "resultados": len(results),
         "articulos_ampliados": len(enrichable),
         "ventana_noticias_dias": NEWS_WINDOW_DAYS,
+        "consultas_ejecutadas": len(google_news_queries()),
     }
 
 
@@ -1050,7 +1051,10 @@ def ai_hard_excluded(text: str) -> bool:
     ))
     if meat and not dairy:
         return True
+    climate = any(contains_term(ntext, term) for term in CLIMATE_IMPACT_TERMS)
     if crop and not (dairy or specific_livestock or feed_context):
+        return True
+    if climate and not (dairy or specific_livestock or feed_context):
         return True
     return False
 
@@ -1537,6 +1541,16 @@ def scan_social_profile(url: str, now: datetime) -> tuple[list[Item], dict[str, 
         "resultados": len(items),
     }
 
+def social_profiles_for_run(now: datetime) -> list[str]:
+    """Devuelve un lote rotativo; cubre todos los perfiles en varios días."""
+    if not SOCIAL_PROFILES:
+        return []
+    batch_count = (len(SOCIAL_PROFILES) + SOCIAL_SCAN_BATCH_SIZE - 1) // SOCIAL_SCAN_BATCH_SIZE
+    batch_index = now.date().toordinal() % batch_count
+    start = batch_index * SOCIAL_SCAN_BATCH_SIZE
+    return SOCIAL_PROFILES[start:start + SOCIAL_SCAN_BATCH_SIZE]
+
+
 # ---------------------------------------------------------------------------
 # Dedupe, HTML y TXT
 # ---------------------------------------------------------------------------
@@ -1719,9 +1733,7 @@ def run() -> tuple[Path, Path, int]:
     # Consulta rotativa de perfiles públicos; no se inicia sesión ni se eluden bloqueos.
     social_statuses: list[dict[str, Any]] = []
     batch_count = (len(SOCIAL_PROFILES) + SOCIAL_SCAN_BATCH_SIZE - 1) // SOCIAL_SCAN_BATCH_SIZE if SOCIAL_PROFILES else 0
-    batch_index = now.date().toordinal() % batch_count if batch_count else 0
-    start_profile = batch_index * SOCIAL_SCAN_BATCH_SIZE
-    profiles_today = SOCIAL_PROFILES[start_profile:start_profile + SOCIAL_SCAN_BATCH_SIZE]
+    profiles_today = social_profiles_for_run(now)
     if os.getenv("RADAR_SCAN_SOCIAL", "1").lower() not in ("0", "false", "no") and profiles_today:
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
             futures = {executor.submit(scan_social_profile, url, now): url for url in profiles_today}
