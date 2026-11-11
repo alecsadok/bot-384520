@@ -882,8 +882,8 @@ def ai_event_date_visible(event_date: datetime, body_text: str) -> bool:
     day = event_date.day
     # Admite formatos como "18 de noviembre", "18 y 19 de noviembre"
     # o "18/11", aunque la página no imprima el año.
-    month_pattern = rf"\\b0?{day}\\b.{{0,55}}\\b{month}\\b"
-    numeric_pattern = rf"\\b0?{day}[/.-]0?{event_date.month}\\b"
+    month_pattern = rf"\b0?{day}\b.{{0,55}}\b{month}\b"
+    numeric_pattern = rf"\b0?{day}[/.-]0?{event_date.month}\b"
     return bool(re.search(month_pattern, text) or re.search(numeric_pattern, text))
 
 
@@ -984,7 +984,6 @@ def verify_ai_candidate(candidate: dict[str, Any], now: datetime) -> Item | None
         # si la actividad todavía no ocurrió y su fecha aparece en la página.
         event_date_value = parse_datetime(candidate.get("event_date"))
         page_dates = extract_text_dates(body_text[:10000])
-        page_date_set = {d.date() for d in page_dates}
         if event_date_value is None or not ai_event_date_visible(event_date_value, body_text[:10000]):
             # Respaldo: tomar la primera fecha futura con año que realmente figura en la página.
             future_dates = [
