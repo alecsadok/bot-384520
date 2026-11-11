@@ -871,8 +871,13 @@ def ai_title_matches(candidate_title: str, page_title: str) -> bool:
 
 def ai_event_date_visible(event_date: datetime, body_text: str) -> bool:
     """Comprueba que día y mes del evento figuren realmente en la página."""
-    if event_date.date() in {d.date() for d in extract_text_dates(body_text)}:
+    visible_dates = extract_text_dates(body_text)
+    if event_date.date() in {d.date() for d in visible_dates}:
         return True
+    # Si la página ya muestra ese mismo día y mes con otro año, no se
+    # corrige silenciosamente el año: podría ser una edición pasada del evento.
+    if any(d.day == event_date.day and d.month == event_date.month for d in visible_dates):
+        return False
     months = [
         "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
         "agosto", "septiembre", "octubre", "noviembre", "diciembre",
@@ -1073,7 +1078,7 @@ def scan_ai_web_search(now: datetime) -> tuple[list[Item], dict[str, Any]]:
     payload = {
         "model": os.getenv("OPENAI_MODEL", AI_DEFAULT_MODEL),
         "reasoning": {"effort": "low"},
-        "tools": [{"type": "web_search", "search_context_size": "low"}],
+        "tools": [{"type": "web_search", "search_context_size": "medium"}],
         "tool_choice": "required",
         "max_output_tokens": 6000,
         "input": [
