@@ -185,6 +185,8 @@ KEYWORDS: dict[str, list[str]] = {
         "medicina veterinaria", "veterinaria", "identificación animal", "trazabilidad animal",
         "reproducción bovina", "inseminación artificial", "maíz para silo", "silo de maíz",
         "silaje", "maíz picado", "sorgo forrajero", "forrajes", "reservas forrajeras",
+        "ración bovina", "raciones bovinas", "ración para vacas", "raciones para vacas",
+        "alimento para el ganado", "alimentos para el ganado", "balanceado bovino", "grano húmedo",
         "pasturas", "alfalfa", "suplementación", "estrés calórico", "estrés térmico",
         "golpe de calor", "sequía", "inundación", "falta de agua", "escasez de agua",
     ],
@@ -354,6 +356,8 @@ LIVESTOCK_EDITORIAL_TERMS = [
     "reproducción bovina", "trazabilidad animal", "identificación animal",
     "forrajes", "reservas forrajeras", "pasturas", "alfalfa", "maíz para silo",
     "silo de maíz", "silaje", "maíz picado", "sorgo forrajero", "suplementación",
+    "ración bovina", "raciones bovinas", "ración para vacas", "raciones para vacas",
+    "alimento para el ganado", "alimentos para el ganado", "balanceado bovino", "grano húmedo",
     "estrés calórico", "estrés térmico", "golpe de calor", "índice de temperatura y humedad",
     "ith", "sequía", "inundación", "falta de agua", "escasez de agua",
 ]
