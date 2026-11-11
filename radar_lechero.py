@@ -1665,6 +1665,7 @@ def write_txt(path: Path, items: list[Item]) -> None:
     """Genera un listado plano: título, fecha de publicación y enlace."""
     blocks = []
     for item in items:
+        item.editorial_group = editorial_source_group(item)
         blocks.append(
             f"{item.title.strip()}\n"
             f"Fuente: {item.source} · {item.editorial_group}\n"
