@@ -219,6 +219,7 @@ class Item:
     event_date: str = ""
     event_location: str = ""
     event_organizer: str = ""
+    event_date_verified: bool = False
     date_label: str = "Publicado"
     legal_copy: str = ""
     relevance: int = 0
@@ -693,7 +694,8 @@ def parse_article(
         section="Evento" if is_event else "Noticia",
         tags=tags,
         event_date=event_date if upcoming_event else "",
-        date_label="Evento verificado" if upcoming_event else "Publicado" if page_published else "Fecha del RSS" if fallback_published_at else "Detectado",
+        event_date_verified=upcoming_event,
+        date_label="Publicado" if page_published else "Fecha del RSS" if fallback_published_at else "Detectado",
         relevance=score if relevant else 20,
     )
     return item
@@ -1105,7 +1107,7 @@ CANDIDATOS:
                 and event_date
                 and now.date() <= event_date.date() <= (now + timedelta(days=AI_EVENT_HORIZON_DAYS)).date()
                 and (
-                    item.date_label == "Evento verificado"
+                    item.event_date_verified
                     or ai_event_date_visible(event_date, evidence_text)
                 )
             )
