@@ -249,7 +249,7 @@ class InstagramEditorialTests(unittest.TestCase):
             url="https://example.com/agro",
             source="Medio general",
             published_at=published,
-            summary="Información general sin relación demostrable con la lechería.",
+            summary="Información general sin conexión con el sector pecuario.",
             discovered_via_google_news=True,
         )
         filtered = radar.filter_google_news_fallback([direct, generic_google])
