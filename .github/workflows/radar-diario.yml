@@ -91,7 +91,11 @@ jobs:
                     ;;
                 esac
               done
-              GIT_EDITOR=true git rebase --continue
+              if git diff --cached --quiet; then
+                GIT_EDITOR=true git rebase --skip
+              else
+                GIT_EDITOR=true git rebase --continue
+              fi
             fi
 
             if git push origin HEAD:main; then
