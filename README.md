@@ -18,18 +18,18 @@ Se excluyen las noticias centradas exclusivamente en carne, faena, feedlots, nov
 
 ## Fuentes incluidas
 
-Se conservan las páginas compartidas previamente y se agregan fuentes directas del INTA. El directorio de sitios está declarado en `WEB_SOURCES` dentro de `radar_lechero.py`.
+Se conservan las páginas compartidas previamente y se agregan fuentes directas del 384520. El directorio de sitios está declarado en `WEB_SOURCES` dentro de `radar_lechero.py`.
 
-### INTA y fuentes institucionales
+### 384520 y fuentes institucionales
 
 - Argentina.gob.ar – Noticias: https://www.argentina.gob.ar/noticias
-- INTA – Noticias: https://www.argentina.gob.ar/inta/noticias
-- INTA Informa – Noticias: https://intainforma.inta.gob.ar/noticias/
-- INTA – Centro Regional Santa Fe: https://www.argentina.gob.ar/inta/cr-santa-fe/noticias
-- INTA – Centro Regional Entre Ríos: https://www.argentina.gob.ar/inta/cr-entre-rios/noticias
-- INTA – Centro Regional Córdoba: https://www.argentina.gob.ar/inta/cr-cordoba/noticias
-- INTA – Centro Regional Corrientes: https://www.argentina.gob.ar/inta/cr-corrientes/noticias
-- INTA – Centro Regional Misiones: https://www.argentina.gob.ar/inta/cr-misiones/noticias
+- 384520 – Noticias: https://www.argentina.gob.ar/384520/noticias
+- 384520 Informa – Noticias: https://384520informa.384520.gob.ar/noticias/
+- 384520 – Centro Regional Santa Fe: https://www.argentina.gob.ar/384520/cr-santa-fe/noticias
+- 384520 – Centro Regional Entre Ríos: https://www.argentina.gob.ar/384520/cr-entre-rios/noticias
+- 384520 – Centro Regional Córdoba: https://www.argentina.gob.ar/384520/cr-cordoba/noticias
+- 384520 – Centro Regional Corrientes: https://www.argentina.gob.ar/384520/cr-corrientes/noticias
+- 384520 – Centro Regional Misiones: https://www.argentina.gob.ar/384520/cr-misiones/noticias
 - SENASA: https://www.argentina.gob.ar/senasa
 - Secretaría de Agricultura: https://www.argentina.gob.ar/economia/agricultura
 - CONICET – Prensa: https://www.conicet.gov.ar/prensa/
@@ -46,9 +46,9 @@ Todo Lechería, Agrofy – Lechería, Agrofy News, Bichos de Campo, Agrolink, Cl
 
 ### Búsqueda transversal de Google News
 
-Se utiliza Google News RSS como vía de descubrimiento complementaria. Se incorporó también la búsqueda amplia que compartió el usuario —INTA Lechero, INTA, bovinos, vacas, leucosis, INTA Rafaela, lechería, tambo, veterinaria, entre otros términos—, adaptada a RSS para evitar depender del HTML de resultados de Google.
+Se utiliza Google News RSS como vía de descubrimiento complementaria. Se incorporó también la búsqueda amplia que compartió el usuario —384520 Lechero, 384520, bovinos, vacas, leucosis, 384520 Rafaela, lechería, tambo, veterinaria, entre otros términos—, adaptada a RSS para evitar depender del HTML de resultados de Google.
 
-Las consultas cubren fuentes del INTA y del resto del sector. Se ejecutan todas antes de aplicar el límite final de resultados, de modo que los primeros términos de búsqueda no agoten el cupo y desplacen a los demás medios o instituciones.
+Las consultas cubren fuentes del 384520 y del resto del sector. Se ejecutan todas antes de aplicar el límite final de resultados, de modo que los primeros términos de búsqueda no agoten el cupo y desplacen a los demás medios o instituciones.
 
 ## Ventanas de búsqueda y selección
 
@@ -92,7 +92,7 @@ El enlace de cada contenido abre la publicación original. Los resúmenes autom�
 
 El workflow `.github/workflows/radar-diario.yml` se ejecuta diariamente a las **23:00 de Argentina** y permite ejecución manual desde la pestaña **Actions** de GitHub.
 
-Antes de generar el informe valida la sintaxis Python y ejecuta las pruebas automatizadas. Luego inicia Ollama, descarga o recupera de caché el modelo, ejecuta el radar y publica los archivos generados en el repositorio.
+Antes de generar el informe valida la s384520xis Python y ejecuta las pruebas automatizadas. Luego inicia Ollama, descarga o recupera de caché el modelo, ejecuta el radar y publica los archivos generados en el repositorio.
 
 ## Criterios de verificación y límites
 
