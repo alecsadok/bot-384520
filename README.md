@@ -1,95 +1,112 @@
 # BOT 384520
 
-Monitoreo diario de noticias, eventos y normativa de interés para la **lechería argentina, los tambos y el ganado lechero**. Combina scraping de páginas públicas, RSS, búsquedas gratuitas en Google News RSS, análisis local con IA y consulta de la Primera Sección del Boletín Oficial.
+Radar editorial diario para detectar **noticias, investigaciones, novedades técnicas y actividades publicables en el Instagram de INTA Lechero**. Reúne fuentes del INTA, organismos, universidades, organizaciones del sector y medios periodísticos especializados.
 
-## Enfoque editorial
+El objetivo no es medir qué institución publica más ni separar noticias “institucionales” de “periodísticas” como si unas valieran más que otras. Una investigación del INTA, una noticia de Todo Lechería o una cobertura de Agrofy pueden ser opciones igualmente válidas: se evalúa el contenido, su actualidad, su utilidad para la audiencia y la evidencia disponible.
 
-El radar prioriza:
+## Criterio editorial
 
-- Lechería: tambos, producción y precio de la leche, industria láctea, eficiencia, instalaciones y sistemas de producción.
-- Ganado lechero: reproducción, genética, crianza y recría de terneros y terneras, manejo del rodeo, sanidad, bienestar y medicina veterinaria.
-- Ganadería bovina: noticias sanitarias, productivas, regulatorias y de manejo que afecten al ganado.
-- Alimentación animal: nutrición, raciones, forrajes, pasturas, alfalfa, reservas, silaje y maíz destinado a silo o alimentación.
-- Fenómeno El Niño: noticias específicas sobre El Niño/ENSO.
+El radar busca material con potencial para comunicar a productores, asesores, profesionales, técnicos y personas vinculadas con la lechería:
 
-No se incorporan pronósticos meteorológicos, observaciones del tiempo ni alertas generales del SMN. Tampoco se priorizan noticias centradas exclusivamente en maíz u otros cultivos, mercados de granos o agricultura sin relación concreta con la alimentación del ganado. Se excluyen las publicaciones enfocadas en producción de carne, faena, feedlots o engorde, salvo que tengan un contenido claramente vinculado también con la lechería.
+- Producción de leche, manejo del tambo, eficiencia, instalaciones, sistemas pastoriles y automatización.
+- Vacas lecheras, reproducción, genética, crianza y recría de terneros y vaquillonas.
+- Sanidad, medicina veterinaria y bienestar animal.
+- Alimentación, nutrición, agua, pasturas, alfalfa, forrajes, silajes y reservas.
+- Economía del tambo, costos, precios de la leche, industria láctea y mercados de productos lácteos.
+- Investigación aplicada, innovación, tecnología, extensión y transferencia de conocimientos.
+- Reglamentaciones, disposiciones sanitarias y medidas que alcancen efectivamente a la actividad.
+- Jornadas, capacitaciones, cursos, seminarios, congresos, demostraciones y días de campo.
 
-El filtro combina términos temáticos con reglas de exclusión. Una noticia sobre un cultivo puede ingresar cuando el contenido la relaciona expresamente con forrajes, silaje, nutrición o alimentación animal. Una noticia sobre El Niño puede ingresar como tema específico, aunque no sea una nota meteorológica de pronóstico.
-
-## IA local y gratuita
-
-BOT 384520 utiliza **Qwen3 1.7B** ejecutado localmente mediante Ollama. El modelo se descarga en el runner de GitHub Actions y procesa allí los textos; no se conecta a OpenAI, Gemini ni a otro proveedor de inferencia remota.
-
-- **Sin API keys:** no requiere claves de proveedores de IA ni cuentas de servicios externos.
-- **Sin cobro por tokens:** las inferencias se ejecutan localmente; no se envían prompts a una API facturada.
-- **Búsqueda de noticias:** utiliza Google News RSS, un feed público sin clave de API, con consultas ampliadas por temas lecheros y de ganado.
-- **Agenda:** agrega búsquedas de jornadas, cursos, seminarios, congresos, exposiciones, webinars y días de campo publicados durante los últimos 30 días. Solo conserva eventos con fecha futura verificable, hasta 90 días.
-- **Análisis normativo:** Qwen3 revisa el texto extraído de la Primera Sección del Boletín Oficial, identifica el impacto concreto sobre tambos y ganado lechero, y debe aportar una cita literal del documento para justificar su selección.
-- **Exclusiones:** las reglas determinísticas siguen bloqueando noticias centradas en carne, faena, feedlots y cultivos sin relación con alimentación animal.
-
-El modelo Qwen3 1.7B de Ollama ocupa aproximadamente **1,4 GB**, está publicado bajo licencia Apache 2.0 y admite inferencia local. La ejecución consume CPU y memoria del runner, no créditos de IA. Referencias: [modelo y tamaño en Ollama](https://ollama.com/library/qwen3:1.7b), [licencia del modelo Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) y [documentación de la API local de Ollama](https://github.com/ollama/ollama/blob/main/docs/api.md).
-
-### Cómo se ejecuta
-
-El workflow instala Ollama, descarga el modelo y lo inicia en `127.0.0.1`. La carpeta de pesos se guarda en la caché de GitHub Actions para evitar descargar 1,4 GB en cada ejecución. No se necesita configurar ningún secreto.
-
-El repositorio BOT 384520 es público. GitHub indica que los runners estándar alojados por GitHub son gratuitos y sin límite de minutos para repositorios públicos. Esta condición dejaría de aplicar si el repositorio se convierte en privado o se utilizan runners de mayor tamaño o servicios adicionales facturados. Ver [facturación de GitHub Actions](https://docs.github.com/en/actions/concepts/billing-and-usage) y [tipos de runners](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job).
-
-Si Ollama o el modelo no están disponibles, BOT 384520 continúa con los filtros y resúmenes convencionales. El informe deja constancia del estado de la IA local; no intenta conectarse a una API paga como alternativa.
-
-## Qué genera
-
-Cada ejecución crea o actualiza únicamente los archivos correspondientes a la fecha local del informe dentro de `informes/`:
-
-- `bot384520_DDMMYY.html`
-- `bot384520_DDMMYY.txt`
-
-Ejemplo: `bot384520_101126.html` y `bot384520_101126.txt` para el 10/11/2026.
-
-El filtro editorial toma publicaciones con fecha identificable dentro de las 24 horas anteriores al momento de ejecución. Se registra la fecha y hora de publicación, la fuente, el enlace original, las etiquetas temáticas y, cuando corresponde, la fecha futura de un evento. El archivo TXT contiene, para cada publicación, el título, la fecha de publicación y el enlace original, separados por líneas en blanco.
-
-## Ejecución automática
-
-El workflow `.github/workflows/radar-diario.yml` programa el script todos los días a las **23:00 de `America/Argentina/Cordoba`** y permite ejecución manual desde la pestaña **Actions** de GitHub.
-
-El workflow instala dependencias, ejecuta el script y guarda los informes en el propio repositorio mediante un commit de `github-actions[bot]`. Requiere que GitHub Actions esté habilitado, que el archivo esté en la rama predeterminada y que el workflow tenga permiso `contents: write`. GitHub advierte que los eventos programados pueden demorarse en períodos de alta demanda; la hora indicada es la hora programada, no una garantía de inicio al segundo.
+Se excluyen las noticias centradas exclusivamente en carne, faena, feedlots, novillos, agricultura o mercados de granos sin relación demostrable con la alimentación del rodeo. Los temas climáticos —incluido El Niño, lluvias o sequías— solo se conservan cuando la publicación explica consecuencias concretas para tambos, animales, pasturas o reservas. No se incorporan pronósticos meteorológicos generales.
 
 ## Fuentes incluidas
 
-### Portales de noticias y especialidad
+Se conservan las páginas compartidas previamente y se agregan fuentes directas del INTA. El directorio de sitios está declarado en `WEB_SOURCES` dentro de `radar_lechero.py`.
 
-Argentina.gob.ar, SENASA, Todo Lechería, Agrofy News/Lechería, Bichos de Campo, Agrolink, Clarín Rural, Agroverdad, Mundo Agro Córdoba, Agritotal, Revista Chacra/Infobae, La Nación Campo, UNL, Infocampo, Agroempresario, Portal Lechero, OCLA, FCV-UNL Eventos, Colegio de Médicos Veterinarios de Santa Fe, Mundo Rural, InfoLáctea, Secretaría de Agricultura, INDEC y Bolsa de Comercio de Rosario.
+### INTA y fuentes institucionales
 
-La presencia de una fuente generalista no implica que se incorporen todas sus publicaciones: cada resultado debe superar el filtro temático del BOT 384520.
+- Argentina.gob.ar – Noticias: https://www.argentina.gob.ar/noticias
+- INTA – Noticias: https://www.argentina.gob.ar/inta/noticias
+- INTA Informa – Noticias: https://intainforma.inta.gob.ar/noticias/
+- INTA – Centro Regional Santa Fe: https://www.argentina.gob.ar/inta/cr-santa-fe/noticias
+- INTA – Centro Regional Entre Ríos: https://www.argentina.gob.ar/inta/cr-entre-rios/noticias
+- INTA – Centro Regional Córdoba: https://www.argentina.gob.ar/inta/cr-cordoba/noticias
+- INTA – Centro Regional Corrientes: https://www.argentina.gob.ar/inta/cr-corrientes/noticias
+- INTA – Centro Regional Misiones: https://www.argentina.gob.ar/inta/cr-misiones/noticias
+- SENASA: https://www.argentina.gob.ar/senasa
+- Secretaría de Agricultura: https://www.argentina.gob.ar/economia/agricultura
+- CONICET – Prensa: https://www.conicet.gov.ar/prensa/
 
-### Búsqueda transversal
+### Universidades, observatorios y entidades
 
-Consultas temáticas gratuitas en Google News RSS: noticias recientes (`when:1d`) y anuncios de eventos (`when:30d`). Las búsquedas se orientan a lechería, ganado bovino, sanidad, reproducción, alimentación animal, economía del tambo, tecnología y agenda de jornadas, cursos, seminarios y congresos. Los eventos se verifican en la página original.
+UNL – Noticias, FCV-UNL – Eventos, OCLA, Colegio de Médicos Veterinarios de Santa Fe, INDEC y Bolsa de Comercio de Rosario.
 
-### Boletín Oficial
+### Medios y portales sectoriales
 
-Consulta de la **Primera Sección – Legislación y Avisos Oficiales**. El recolector identifica las fichas individuales de la edición, descarga el texto de cada publicación candidata y extrae título, área, tipo de norma, fecha y enlace oficial.
+Todo Lechería, Agrofy – Lechería, Agrofy News, Bichos de Campo, Agrolink, Clarín Rural, Agroverdad, Mundo Agro Córdoba, Agritotal, Infobae – Revista Chacra, La Nación – Campo, Infocampo, Agroempresario, Portal Lechero, Mundo Rural e InfoLáctea.
 
-El análisis normativo utiliza el modelo local para evaluar en conjunto los documentos candidatos. La selección exige relevancia sectorial, una puntuación mínima y una cita breve que debe coincidir literalmente con el texto oficial. El resultado incluye resumen, impacto potencial, actores alcanzados y puntos que conviene verificar. Si Ollama o el modelo no están disponibles, se aplica el filtro temático de respaldo y se deja constancia en el estado de la fuente.
+**Ninguna de las páginas de noticias enumeradas por el usuario fue eliminada.** El directorio puede ampliarse manteniendo la misma estructura. Que una URL esté configurada no garantiza que su sitio publique RSS o permita lectura automatizada; el informe registra el resultado de cada consulta.
 
-La integración toma como referencia el flujo general de extracción y análisis de [Chequeado Botletín Oficial](https://github.com/chequeado/botletin-oficial), pero BOT 384520 mantiene un recolector independiente, orientado a la normativa que afecta a tambos, ganado lechero y producción láctea. No necesita la base de datos, API ni frontend de ese proyecto.
+### Búsqueda transversal de Google News
 
-Se deben verificar siempre el articulado, los sujetos alcanzados, los requisitos, los anexos y la vigencia en la publicación oficial antes de comunicar o tomar decisiones.
+Se utiliza Google News RSS como vía de descubrimiento complementaria. Se incorporó también la búsqueda amplia que compartió el usuario —INTA Lechero, INTA, bovinos, vacas, leucosis, INTA Rafaela, lechería, tambo, veterinaria, entre otros términos—, adaptada a RSS para evitar depender del HTML de resultados de Google.
 
-### Redes sociales
+Las consultas cubren fuentes del INTA y del resto del sector. Se ejecutan todas antes de aplicar el límite final de resultados, de modo que los primeros términos de búsqueda no agoten el cupo y desplacen a los demás medios o instituciones.
 
-Se consultan perfiles públicos de Instagram y X sin autenticación. Cuando el HTML público expone enlaces a publicaciones, se intenta leer hasta dos posts por perfil para recuperar contenido y fecha. Estas plataformas pueden devolver páginas incompletas, páginas que requieren JavaScript, bloqueos o metadatos sin publicaciones. El informe identifica esos casos como acceso restringido/no verificable; no usa credenciales, no evade controles y no afirma haber leído publicaciones inaccesibles.
+## Ventanas de búsqueda y selección
 
-## Criterios de calidad y límites
+- **Noticias:** publicaciones dentro de los últimos 7 días. La ventana ampliada permite reunir más alternativas que una búsqueda limitada a las últimas 24 horas.
+- **Agenda:** se buscan anuncios publicados durante los últimos 30 días. Se conservan actividades con fecha futura verificable, hasta 90 días desde la ejecución.
+- **Boletín Oficial:** se revisa la Primera Sección y se analiza cada documento candidato por separado. La normativa aparece en su propio bloque.
+- **Orden:** primero se evalúan pertinencia temática, actualidad, novedad y utilidad para la audiencia. El origen de la publicación se muestra para identificar la fuente, pero no aumenta ni reduce automáticamente la puntuación.
 
-- Las noticias se limitan a publicaciones recientes. La agenda también busca anuncios de los últimos 30 días y conserva eventos cuya fecha de realización es futura, aparece en la página original y se encuentra dentro de los próximos 90 días. Si no se puede verificar la fecha del evento, queda fuera.
-- No se inventan fechas de publicación. Las fechas futuras de eventos se extraen del texto cuando pueden identificarse.
+Los candidatos que superan la selección pueden mostrar un resumen y una **idea de enfoque para Instagram**, además de un formato orientativo: Carrusel, Reel, Placa, Historias o Revisar. Es una ayuda de planificación, no un copy listo para publicar. El formato se sugiere solo cuando el contenido recuperado ofrece una base razonable; no se inventan fotografías, testimonios, resultados o recursos audiovisuales.
+
+## Perfiles públicos de Instagram y X
+
+Se conservó el listado completo de perfiles aportado por el usuario en `config/perfiles_sociales.txt` (112 direcciones). Para evitar realizar más de cien consultas a Instagram en cada ejecución, se revisan **16 perfiles por día**, de manera rotativa. Con la lista actual, el ciclo completo es de aproximadamente 7 días.
+
+El acceso depende de lo que cada página entregue públicamente. Instagram y X pueden ocultar publicaciones, requerir JavaScript, bloquear solicitudes o no exponer la fecha. El bot no inicia sesión, no utiliza cookies privadas ni intenta eludir controles. Por lo tanto, el monitoreo social es complementario y oportunista: una cuenta configurada no equivale a una lectura garantizada de todas sus publicaciones.
+
+Se pueden sumar o quitar perfiles editando ese archivo de texto, con una URL por línea.
+
+## IA local y gratuita
+
+El análisis editorial utiliza **Qwen3 1.7B** mediante Ollama, ejecutado localmente en el runner de GitHub Actions.
+
+- No se conecta a OpenAI, Gemini ni otros servicios de inferencia remota.
+- No requiere claves API ni consume tokens pagos.
+- Evalúa candidatos de fuentes institucionales y periodísticas con el mismo criterio.
+- Resume el material recibido y puede proponer enfoques y formatos de Instagram.
+- Si Ollama no está disponible, el radar utiliza filtros convencionales y conserva los resultados de páginas directas que ya superaron el análisis temático.
+
+El modelo Qwen3 1.7B publicado en Ollama ocupa aproximadamente 1,4 GB y tiene licencia Apache 2.0. Referencias: [modelo en Ollama](https://ollama.com/library/qwen3:1.7b), [modelo Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) y [API local de Ollama](https://github.com/ollama/ollama/blob/main/docs/api.md).
+
+## Qué genera
+
+Cada ejecución crea o actualiza los archivos de la fecha local dentro de `informes/`:
+
+- `bot384520_DDMMYY.html`: informe navegable con fuente, categoría, fecha, resumen, enlace, enfoque posible para Instagram, formato sugerido, agenda y estado de las fuentes.
+- `bot384520_DDMMYY.txt`: versión de texto con la misma información editorial básica.
+
+El enlace de cada contenido abre la publicación original. Los resúmenes automáticos no reemplazan la lectura de la fuente.
+
+## Ejecución automática
+
+El workflow `.github/workflows/radar-diario.yml` se ejecuta diariamente a las **23:00 de Argentina** y permite ejecución manual desde la pestaña **Actions** de GitHub.
+
+Antes de generar el informe valida la sintaxis Python y ejecuta las pruebas automatizadas. Luego inicia Ollama, descarga o recupera de caché el modelo, ejecuta el radar y publica los archivos generados en el repositorio.
+
+## Criterios de verificación y límites
+
+- Las fechas de publicación y de realización de eventos se tratan por separado. Una actividad no se muestra como futura si su fecha no puede verificarse en el contenido original.
+- Los eventos antiguos se conservan solo cuando la fecha futura y el contenido de la actividad están documentados.
 - Se eliminan duplicados por título normalizado.
-- En fuentes RSS y portales, los resúmenes son extractivos. La IA local puede reformular los resúmenes de los candidatos recuperados y clasificar su pertinencia; no sustituye la verificación del enlace y la fecha en la fuente original.
-- El análisis de normativa se realiza con IA local y debe incluir evidencia literal de la publicación oficial; si el modelo no está disponible, se utiliza el filtro temático de respaldo. Ningún resumen reemplaza la lectura del articulado ni el asesoramiento legal.
-- El filtro editorial reduce resultados ajenos al ganado, pero una mención contextual puede requerir revisión humana. Conviene revisar titulares y enlaces antes de redistribuir el informe.
-- El scraping está sujeto a cambios de diseño, disponibilidad, robots, límites de frecuencia, JavaScript y condiciones de cada fuente. Por eso cada informe incluye una tabla de estado de fuentes.
-- El script no consulta servicios meteorológicos ni usa cookies privadas, login o cuentas de usuario. La IA se ejecuta localmente; no utiliza claves API ni proveedores de inferencia pagos.
+- Los datos, cifras, personas, alcances y conclusiones deben verificarse en el enlace original antes de preparar el copy.
+- El ángulo y el formato sugeridos por IA son orientativos. La decisión editorial y la redacción final requieren revisión humana.
+- Una fuente sin resultados no demuestra que no haya publicado: puede no exponer RSS, cambiar su diseño o limitar el acceso automatizado.
+- La normativa debe verificarse en el texto completo, sus anexos y vigencia antes de difundir obligaciones, requisitos o beneficios.
+- El bot no consulta servicios meteorológicos ni utiliza credenciales para acceder a redes sociales.
 
 ## Prueba local
 
@@ -100,7 +117,7 @@ python -m pip install -r requirements.txt
 python radar_lechero.py
 ```
 
-Para desactivar las consultas a perfiles públicos de Instagram/X durante una prueba local:
+Para desactivar la consulta rotativa de perfiles sociales:
 
 ```bash
 RADAR_SCAN_SOCIAL=0 python radar_lechero.py
@@ -115,7 +132,7 @@ python radar_lechero.py
 
 ## Dependencias
 
-- `requests`: descarga de páginas y endpoints.
-- `beautifulsoup4`: análisis de HTML.
-- `feedparser`: RSS/Atom.
+- `requests`: descarga de páginas.
+- `beautifulsoup4`: extracción de información de HTML.
+- `feedparser`: lectura de RSS/Atom.
 - `python-dateutil`: interpretación de fechas.
