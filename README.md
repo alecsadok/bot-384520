@@ -34,7 +34,7 @@ Los resultados propuestos por la IA no se publican automáticamente: el script a
 3. Crear un secreto llamado exactamente `OPENAI_API_KEY` y pegar allí la clave. **No guardar la clave en el código, README ni en este chat.**
 4. En **Actions**, ejecutar manualmente **BOT 384520 diario**. En el informe, revisar la fila **Búsqueda web con IA** para confirmar si pudo buscar y cuántos resultados verificó.
 
-El modelo configurado por defecto es `gpt-6-luna`. La integración se puede desactivar con `RADAR_AI_WEB_SEARCH=0` o cambiar mediante `OPENAI_MODEL`. El uso de la API se factura por separado de una suscripción de ChatGPT; el costo depende de los tokens y de las búsquedas web realizadas. Consultar los [precios vigentes de la API](https://developers.openai.com/api/docs/pricing).
+El modelo configurado por defecto es `gpt-6-astra`, tanto para la búsqueda web como para el análisis de normativa. Se puede cambiar la búsqueda con `OPENAI_MODEL` y el análisis del Boletín Oficial con `OPENAI_BULLETIN_MODEL`. La búsqueda se desactiva con `RADAR_AI_WEB_SEARCH=0`. El uso de la API se factura por separado de una suscripción de ChatGPT; el costo depende de los tokens y de las búsquedas web realizadas. Consultar los [precios vigentes de la API](https://developers.openai.com/api/docs/pricing).
 
 ## Qué genera
 
@@ -67,7 +67,13 @@ Consultas temáticas en Google News RSS, acotadas a la ventana reciente (`when:1
 
 ### Boletín Oficial
 
-Consulta de la **Primera Sección – Legislación y Avisos Oficiales**. Se filtran normas vinculadas con lechería, bovinos, sanidad animal, trazabilidad, alimentación y producción ganadera. Para cada norma detectada se prepara un extracto y un copy orientativo mediante reglas determinísticas. Se deben verificar siempre el articulado, los sujetos alcanzados, los requisitos, los anexos y la vigencia en la publicación oficial antes de comunicar o tomar decisiones.
+Consulta de la **Primera Sección – Legislación y Avisos Oficiales**. El recolector identifica las fichas individuales de la edición, descarga el texto de cada publicación candidata y extrae título, área, tipo de norma, fecha y enlace oficial.
+
+Cuando existe `OPENAI_API_KEY`, una llamada de análisis estructurado evalúa en conjunto los documentos candidatos. La selección exige relevancia sectorial, una puntuación mínima y una cita breve que debe coincidir literalmente con el texto oficial. El resultado incluye resumen, impacto potencial, actores alcanzados y puntos que conviene verificar. Si la API no está configurada o falla, se aplica el filtro temático de respaldo y se deja constancia en el estado de la fuente.
+
+La integración toma como referencia el flujo general de extracción y análisis de [Chequeado Botletín Oficial](https://github.com/chequeado/botletin-oficial), pero BOT 384520 mantiene un recolector independiente, orientado a la normativa que afecta a tambos, ganado lechero y producción láctea. No necesita la base de datos, API ni frontend de ese proyecto.
+
+Se deben verificar siempre el articulado, los sujetos alcanzados, los requisitos, los anexos y la vigencia en la publicación oficial antes de comunicar o tomar decisiones.
 
 ### Redes sociales
 
@@ -79,10 +85,10 @@ Se consultan perfiles públicos de Instagram y X sin autenticación. Cuando el H
 - No se inventan fechas de publicación. Las fechas futuras de eventos se extraen del texto cuando pueden identificarse.
 - Se eliminan duplicados por título normalizado.
 - En las fuentes RSS y portales, los resúmenes son extractivos. En los resultados de búsqueda web con IA, la síntesis es generada por el modelo y se conserva únicamente después de verificar el enlace y el contenido de la página original.
-- El copy de normativa se construye con reglas y plantillas; no reemplaza asesoramiento legal ni revisión humana.
+- El análisis de normativa puede ser asistido por IA y siempre incluye la referencia a la publicación oficial; si la IA no está disponible, se utiliza un resumen de respaldo basado en reglas. Ningún resumen reemplaza la lectura del articulado ni el asesoramiento legal.
 - El filtro editorial reduce resultados ajenos al ganado, pero una mención contextual puede requerir revisión humana. Conviene revisar titulares y enlaces antes de redistribuir el informe.
 - El scraping está sujeto a cambios de diseño, disponibilidad, robots, límites de frecuencia, JavaScript y condiciones de cada fuente. Por eso cada informe incluye una tabla de estado de fuentes.
-- El script no consulta servicios meteorológicos, no usa cookies privadas, login, cuentas de usuario ni servicios de IA.
+- El script no consulta servicios meteorológicos ni usa cookies privadas, login o cuentas de usuario. La búsqueda y el análisis con IA requieren el secreto de API descrito arriba.
 
 ## Prueba local
 
