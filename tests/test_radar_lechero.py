@@ -48,6 +48,44 @@ class EditorialFilterTests(unittest.TestCase):
         self.assertFalse(available)
         self.assertIn("localhost", message)
 
+    def test_google_news_fallback_keeps_only_relevant_items(self):
+        published = datetime(2026, 11, 11, 10, 0, tzinfo=radar.TZ)
+        items = [
+            radar.Item(
+                title="Los tambos incorporan tecnología para mejorar el ordeño",
+                url="https://example.com/tambo",
+                source="Google News",
+                published_at=published,
+                summary="La innovación mejora la producción de leche.",
+            ),
+            radar.Item(
+                title="Sube la faena bovina y las exportaciones de carne",
+                url="https://example.com/carne",
+                source="Google News",
+                published_at=published,
+                summary="Crecen los feedlots y la faena de novillos.",
+            ),
+            radar.Item(
+                title="Avanza la cosecha de maíz y soja",
+                url="https://example.com/granos",
+                source="Google News",
+                published_at=published,
+                summary="Resultados de la campaña agrícola.",
+            ),
+        ]
+        filtered = radar.filter_google_news_fallback(items)
+        self.assertEqual([item.url for item in filtered], ["https://example.com/tambo"])
+
+    def test_source_and_workflow_do_not_reference_paid_openai_api(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "radar_lechero.py").read_text(encoding="utf-8")
+        workflow = (root / ".github" / "workflows" / "radar-diario.yml").read_text(encoding="utf-8")
+        self.assertNotIn("OPENAI_API_KEY", source)
+        self.assertNotIn("api.openai.com", source)
+        self.assertNotIn("OPENAI_API_KEY", workflow)
+        self.assertNotIn("secrets.OPENAI_API_KEY", workflow)
+
 
 class BulletinOfficialTests(unittest.TestCase):
     def test_listing_finds_sector_specific_official_notice(self):
