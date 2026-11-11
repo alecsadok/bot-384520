@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""BOT 384520: recopilación determinística de noticias, eventos, normativa y clima.
+"""BOT 384520: monitoreo de noticias, eventos y normativa sobre lechería y ganado bovino.
 
 No utiliza modelos de IA ni servicios de generación de texto. Los resúmenes son
 extractivos y los textos sobre normativa se construyen mediante reglas explícitas.
@@ -75,7 +75,6 @@ WEB_SOURCES: list[dict[str, str]] = [
     {"name": "Secretaría de Agricultura", "url": "https://www.argentina.gob.ar/economia/agricultura", "kind": "institucional"},
     {"name": "INDEC", "url": "https://www.indec.gob.ar/", "kind": "estadistica"},
     {"name": "Bolsa de Comercio de Rosario", "url": "https://www.bcr.com.ar/es/mercados/investigacion-y-desarrollo/informativo-semanal", "kind": "economia"},
-    {"name": "SMN – Servicio Meteorológico Nacional", "url": "https://www.smn.gob.ar/", "kind": "clima"},
 ]
 
 # El Boletín Oficial se procesa por separado para leer la Primera Sección.
@@ -177,12 +176,20 @@ KEYWORDS: dict[str, list[str]] = {
         "tarifa eléctrica", "tarifa electrica", "combustibles", "energía", "energia", "costos logísticos",
         "costos logisticos", "iva", "industria alimenticia",
     ],
-    "Clima y ambiente": [
-        "clima", "tiempo", "pronóstico", "pronostico", "alerta meteorológica", "alerta por tormentas", "lluvias",
-        "precipitaciones", "temperatura", "ola de calor", "ola de frío", "sequía", "inundación", "granizo",
-        "vientos", "humedad", "índice de temperatura y humedad", "ith", "estrés calórico", "estrés térmico",
-        "balance hídrico", "agua", "anegamiento", "exceso hídrico", "déficit hídrico", "heladas",
-        "cambio climático", "variabilidad climática", "pronóstico agroclimático", "suelos", "barbecho",
+    "Ganadería bovina y manejo del rodeo": [
+        "ganadería bovina", "ganado bovino", "ganadería", "ganado", "bovino", "bovina", "bovinos",
+        "bovinas", "vacuno", "vacunos", "rodeo bovino", "manejo del rodeo", "cría bovina",
+        "recría bovina", "ternero", "terneros", "ternera", "terneras", "vaquillonas",
+        "sanidad animal", "sanidad bovina", "bienestar animal", "bienestar bovino",
+        "nutrición animal", "nutrición bovina", "alimentación animal", "alimentación bovina",
+        "medicina veterinaria", "veterinaria", "identificación animal", "trazabilidad animal",
+        "reproducción bovina", "inseminación artificial", "maíz para silo", "silo de maíz",
+        "silaje", "maíz picado", "sorgo forrajero", "forrajes", "reservas forrajeras",
+        "pasturas", "alfalfa", "suplementación", "estrés calórico", "estrés térmico",
+        "golpe de calor", "sequía", "inundación", "falta de agua", "escasez de agua",
+    ],
+    "Fenómeno El Niño": [
+        "el niño", "fenómeno el niño", "evento el niño", "enso",
     ],
 }
 
@@ -323,8 +330,62 @@ def all_keywords() -> list[str]:
     return sorted({kw for group in KEYWORDS.values() for kw in group}, key=len, reverse=True)
 
 
+# Filtro editorial: una mención genérica al campo o a un cultivo no alcanza.
+DAIRY_EDITORIAL_TERMS = [
+    "leche", "lácteo", "lechero", "lechera", "lechería", "tambo", "ordeño",
+    "vacas lecheras", "rodeo lechero", "producción láctea", "producción de leche",
+    "industria láctea", "terneros de tambo", "terneras de tambo",
+]
+LIVESTOCK_EDITORIAL_TERMS = [
+    "ganadería", "ganado", "bovino", "bovina", "bovinos", "bovinas", "vacuno", "vacunos",
+    "rodeo", "vaca", "vacas", "ternero", "terneros", "ternera", "terneras", "vaquillonas",
+    "sanidad animal", "sanidad bovina", "bienestar animal", "mastitis", "brucelosis",
+    "tuberculosis bovina", "queratoconjuntivitis", "nutrición bovina", "nutrición animal",
+    "alimentación bovina", "alimentación animal", "medicina veterinaria", "veterinaria",
+    "reproducción bovina", "trazabilidad animal", "identificación animal",
+    "forrajes", "reservas forrajeras", "pasturas", "alfalfa", "maíz para silo",
+    "silo de maíz", "silaje", "maíz picado", "sorgo forrajero", "suplementación",
+    "estrés calórico", "estrés térmico", "golpe de calor", "índice de temperatura y humedad",
+    "ith", "sequía", "inundación", "falta de agua", "escasez de agua",
+]
+SPECIFIC_LIVESTOCK_TERMS = [
+    term for term in LIVESTOCK_EDITORIAL_TERMS
+    if term not in ("ganadería", "ganado", "veterinaria")
+]
+MEAT_FOCUS_TERMS = [
+    "carne bovina", "carne vacuna", "carne de res", "mercado de carnes",
+    "exportación de carne", "exportaciones de carne", "cortes vacunos",
+    "faena bovina", "faena de bovinos", "faena de vacunos", "feedlot", "feedlots",
+    "engorde a corral", "novillo", "novillos", "novillito", "novillitos",
+    "ganadería de carne", "ganado para carne", "producción de carne bovina",
+]
+CROP_FOCUS_TERMS = [
+    "maíz", "soja", "trigo", "girasol", "cebada", "sorgo granífero",
+    "mercado de granos", "cosecha de maíz", "siembra de maíz", "cosecha de soja",
+    "siembra de soja", "rendimiento de maíz", "exportación de granos",
+]
+
+def editorially_relevant(text: str) -> bool:
+    ntext = normalize(text)
+    dairy = any(normalize(term) in ntext for term in DAIRY_EDITORIAL_TERMS)
+    livestock = any(normalize(term) in ntext for term in LIVESTOCK_EDITORIAL_TERMS)
+    specific_livestock = any(normalize(term) in ntext for term in SPECIFIC_LIVESTOCK_TERMS)
+    el_nino = any(normalize(term) in ntext for term in ("el niño", "enso"))
+    meat = any(normalize(term) in ntext for term in MEAT_FOCUS_TERMS)
+    crop = any(normalize(term) in ntext for term in CROP_FOCUS_TERMS)
+
+    if meat and not dairy:
+        return False
+    if el_nino:
+        return True
+    if crop and not (dairy or specific_livestock):
+        return False
+    return dairy or livestock
+
 def classify(text: str) -> tuple[list[str], int]:
     ntext = normalize(text)
+    if not editorially_relevant(ntext):
+        return [], 0
     tags: list[str] = []
     score = 0
     for category, terms in KEYWORDS.items():
@@ -332,12 +393,10 @@ def classify(text: str) -> tuple[list[str], int]:
         if hits:
             tags.append(category)
             score += sum(3 if len(normalize(term).split()) > 1 else 1 for term in hits[:12])
-    # Se penalizan coincidencias genéricas si no hay términos de lechería concretos.
     matched = [kw for kw in all_keywords() if normalize(kw) in ntext]
     specific = [kw for kw in matched if normalize(kw) not in BROAD_TERMS]
     if not specific and len(matched) < 2:
-        score = 0
-        tags = []
+        return [], 0
     return tags, score
 
 
@@ -499,9 +558,6 @@ def parse_feed(feed_url: str, source_name: str, now: datetime) -> list[Item]:
         summary = clean_text(entry.get("summary", ""), 700)
         text = f"{title} {summary}"
         relevant, tags, score = is_relevant(text)
-        # Listados especializados pueden publicar eventos de formación sin repetir términos técnicos en el título.
-        if not relevant and source_name in ("FCV UNL – Eventos", "Todo Lechería", "OCLA"):
-            relevant, tags, score = is_relevant(f"{text} lechería tambo vacas")
         if not relevant or not is_within_window(pub, now):
             continue
         is_event = any(normalize(w) in normalize(text) for w in EVENT_WORDS)
@@ -624,15 +680,16 @@ def scan_web_source(source: dict[str, str], now: datetime) -> tuple[list[Item], 
 
 
 def google_news_queries() -> list[str]:
-    # Consultas separadas para evitar búsquedas de términos excesivamente amplios.
+    # Búsquedas centradas en lechería, ganado bovino y efectos de El Niño.
     return [
         '(lechería OR lechero OR tambo OR tambos) Argentina when:1d',
-        '("vacas lecheras" OR "rodeo lechero" OR "producción de leche") Argentina when:1d',
-        '(mastitis OR terneros OR vaquillonas OR reproducción bovina) lechería Argentina when:1d',
+        '("vacas lecheras" OR "rodeo lechero" OR "producción de leche" OR terneras) Argentina when:1d',
+        '(mastitis OR terneros OR vaquillonas OR reproducción bovina OR sanidad bovina) Argentina when:1d',
         '(OCLA OR "precio de la leche" OR "industria láctea" OR lácteos) Argentina when:1d',
+        '("ganado bovino" OR bovinos OR ganadería) (sanidad OR nutrición OR bienestar OR reproducción OR alimentación) Argentina when:1d',
         '(SENASA bovinos OR trazabilidad animal OR identificación electrónica bovina) Argentina when:1d',
-        '(forrajes OR alfalfa OR silo OR nutrición bovina) tambo Argentina when:1d',
-        '(clima OR lluvias OR sequía OR calor OR ITH) tambo Santa Fe Argentina when:1d',
+        '(forrajes OR alfalfa OR "maíz para silo" OR pasturas OR "silo de maíz" OR nutrición bovina) (tambo OR vacas OR ganado) Argentina when:1d',
+        '("El Niño" OR ENSO) (Argentina OR ganadería OR bovinos OR tambo OR pasturas OR forrajes) when:1d',
     ]
 
 
@@ -883,87 +940,6 @@ def scan_social_profile(url: str, now: datetime) -> tuple[list[Item], dict[str, 
     }
 
 # ---------------------------------------------------------------------------
-# Tiempo y clima: Servicio Meteorológico Nacional (SMN)
-# ---------------------------------------------------------------------------
-def recursive_records(data: Any) -> Iterable[dict[str, Any]]:
-    if isinstance(data, dict):
-        yield data
-        for value in data.values():
-            yield from recursive_records(value)
-    elif isinstance(data, list):
-        for value in data:
-            yield from recursive_records(value)
-
-
-def smn_get(url: str) -> Any:
-    try:
-        response = make_session().get(url, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-        return response.json()
-    except Exception as exc:
-        LOG.warning("SMN no disponible (%s): %s", url, exc)
-        return None
-
-
-def get_weather(now: datetime) -> dict[str, Any]:
-    observations = smn_get("https://ws.smn.gob.ar/map_items/weather")
-    forecasts = smn_get("https://ws.smn.gob.ar/map_items/forecast/3")
-    alerts = smn_get("https://ws.smn.gob.ar/alerts/type/AL")
-    city_rows: list[dict[str, Any]] = []
-    if observations:
-        for row in recursive_records(observations):
-            label = normalize(str(row.get("name") or row.get("station") or row.get("localidad") or ""))
-            province = normalize(str(row.get("province") or row.get("provincia") or ""))
-            if "rafaela" in label or ("santa fe" in province and "rafaela" in label):
-                weather = row.get("weather") if isinstance(row.get("weather"), dict) else row
-                updated = row.get("updated") or row.get("timestamp")
-                updated_dt = None
-                if isinstance(updated, (int, float)):
-                    updated_dt = datetime.fromtimestamp(updated, tz=timezone.utc).astimezone(TZ)
-                city_rows.append({
-                    "localidad": row.get("name") or "Rafaela",
-                    "provincia": row.get("province") or "Santa Fe",
-                    "temperatura": weather.get("temp") or weather.get("temperature") or weather.get("temperature_c"),
-                    "humedad": weather.get("humidity") or weather.get("relative_humidity"),
-                    "presion": weather.get("pressure") or weather.get("pressure_hpa"),
-                    "viento": weather.get("wind_speed") or weather.get("wind_speed_kmh"),
-                    "descripcion": weather.get("description") or weather.get("weather_desc") or weather.get("name"),
-                    "actualizado": updated_dt.strftime("%d/%m/%Y %H:%M") if updated_dt else "no informado por la API",
-                    "fuente": "SMN – observaciones",
-                    "url": "https://ws.smn.gob.ar/map_items/weather",
-                })
-                if len(city_rows) >= 3:
-                    break
-    forecast_rows: list[dict[str, Any]] = []
-    if forecasts:
-        for row in recursive_records(forecasts):
-            label = normalize(str(row.get("name") or row.get("localidad") or row.get("city") or ""))
-            if "rafaela" in label:
-                forecast_rows.append({"dato": row, "fuente": "SMN – pronóstico", "url": "https://ws.smn.gob.ar/map_items/forecast/3"})
-                if len(forecast_rows) >= 2:
-                    break
-    alert_rows: list[dict[str, Any]] = []
-    if alerts:
-        for row in recursive_records(alerts):
-            blob = normalize(json.dumps(row, ensure_ascii=False))
-            if "santa fe" in blob or "rafaela" in blob:
-                # No se expanden objetos internos; se conserva el texto oficial resumido.
-                alert_rows.append({"texto": clean_text(json.dumps(row, ensure_ascii=False), 700), "fuente": "SMN – alertas vigentes", "url": "https://ws.smn.gob.ar/alerts/type/AL"})
-                if len(alert_rows) >= 5:
-                    break
-    return {
-        "consultado": now.strftime("%d/%m/%Y %H:%M %Z"),
-        "observaciones_rafaela": city_rows,
-        "pronostico_rafaela": forecast_rows,
-        "alertas_santa_fe": alert_rows,
-        "fuentes": [
-            {"nombre": "SMN – observaciones", "url": "https://ws.smn.gob.ar/map_items/weather"},
-            {"nombre": "SMN – pronóstico a 3 días", "url": "https://ws.smn.gob.ar/map_items/forecast/3"},
-            {"nombre": "SMN – alertas vigentes", "url": "https://ws.smn.gob.ar/alerts/type/AL"},
-        ],
-    }
-
-# ---------------------------------------------------------------------------
 # Dedupe, HTML y TXT
 # ---------------------------------------------------------------------------
 def deduplicate(items: list[Item]) -> list[Item]:
@@ -982,7 +958,7 @@ def esc(value: Any) -> str:
     return html.escape(str(value or ""), quote=True)
 
 
-def render_html(items: list[Item], weather: dict[str, Any], statuses: list[dict[str, Any]], now: datetime, window_start: datetime) -> str:
+def render_html(items: list[Item], statuses: list[dict[str, Any]], now: datetime, window_start: datetime) -> str:
     day_label = now.strftime("%d/%m/%Y")
     counts = {
         "total": len(items),
@@ -1012,19 +988,6 @@ def render_html(items: list[Item], weather: dict[str, Any], statuses: list[dict[
             )
         cards.append('</section>')
 
-    weather_parts = []
-    for row in weather.get("observaciones_rafaela", []):
-        weather_parts.append(
-            '<div class="weather-card"><strong>Rafaela, Santa Fe</strong>'
-            f'<p>Temperatura: {esc(row.get("temperatura", "s/d"))} °C · Humedad: {esc(row.get("humedad", "s/d"))}%</p>'
-            f'<p>Viento: {esc(row.get("viento", "s/d"))} · Presión: {esc(row.get("presion", "s/d"))}</p>'
-            f'<p>{esc(row.get("descripcion", ""))} · Observación: {esc(row.get("actualizado", ""))}</p>'
-            f'<a href="{esc(row.get("url"))}" target="_blank" rel="noopener">Datos del SMN</a></div>'
-        )
-    if not weather_parts:
-        weather_parts.append('<p class="empty">No se pudo recuperar una observación específica de Rafaela desde el endpoint público del SMN.</p>')
-    alert_html = "".join(f'<li>{esc(a.get("texto"))} <a href="{esc(a.get("url"))}">Fuente SMN</a></li>' for a in weather.get("alertas_santa_fe", []))
-    forecast_html = "".join(f'<li><a href="{esc(f.get("url"))}" target="_blank" rel="noopener">Consultar pronóstico del SMN para Rafaela</a></li>' for f in weather.get("pronostico_rafaela", []))
     source_rows = "".join(f'<tr><td>{esc(s.get("fuente"))}</td><td>{esc(s.get("estado"))}</td><td>{esc(s.get("resultados", "—"))}</td></tr>' for s in statuses)
     social_rows = "".join(f'<tr><td><a href="{esc(s.get("url"))}" target="_blank" rel="noopener">{esc(s.get("fuente"))}</a></td><td>{esc(s.get("estado"))}</td></tr>' for s in statuses if s.get("social"))
 
@@ -1045,15 +1008,13 @@ h2{{font-size:21px;margin:0 0 14px}}h2 span{{font-size:13px;color:var(--muted);f
 .item p{{margin:7px 0}}.meta{{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:12px}}
 .tags{{color:#64748b;font-size:12px}}.event-date{{color:#854d0e}}.copy{{background:#fffbeb;border:1px solid #f4d58d;border-radius:8px;padding:13px;margin-top:13px}}
 .copy h4{{margin:0 0 8px;color:#854d0e}}pre{{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.5 Arial,sans-serif;margin:0}}
-.empty{{color:var(--muted);font-size:14px}}.weather,.sources{{margin:18px 0}}.weather-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}}
-.weather-card{{border:1px solid var(--line);border-radius:8px;padding:14px}}table{{width:100%;border-collapse:collapse;font-size:13px}}td,th{{padding:9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}}
+.empty{{color:var(--muted);font-size:14px}}.sources{{margin:18px 0}}table{{width:100%;border-collapse:collapse;font-size:13px}}td,th{{padding:9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}}
 footer{{text-align:center;padding:28px;color:var(--muted);font-size:12px}}@media(max-width:620px){{.metrics{{grid-template-columns:repeat(2,1fr)}}header h1{{font-size:24px}}}}
 </style></head><body>
-<header><h1>BOT 384520</h1><p>Noticias, eventos, normativa y contexto agroclimático del sector lácteo</p>
+<header><h1>BOT 384520</h1><p>Noticias, eventos y normativa sobre lechería, ganadería bovina y ganado lechero</p>
 <p>Informe del {day_label} · Ventana: {window_start.strftime('%d/%m/%Y %H:%M')} a {now.strftime('%d/%m/%Y %H:%M')} ({TZ_NAME})</p></header>
 <main>
 <div class="metrics"><div class="metric"><strong>{counts['total']}</strong><span>Publicaciones relevantes</span></div><div class="metric"><strong>{counts['noticias']}</strong><span>Noticias</span></div><div class="metric"><strong>{counts['eventos']}</strong><span>Eventos</span></div><div class="metric"><strong>{counts['normativa']}</strong><span>Normas detectadas</span></div></div>
-<section class="weather"><h2>Tiempo y clima · Rafaela y Santa Fe</h2><p>Consulta: {esc(weather.get('consultado',''))}. Información de observación y pronóstico del SMN; no integra el filtro de publicaciones de 24 horas.</p><div class="weather-grid">{''.join(weather_parts)}</div><h3>Pronóstico</h3><ul>{forecast_html or '<li>Sin dato específico de Rafaela en la respuesta del servicio.</li>'}</ul><h3>Alertas vigentes para Santa Fe</h3><ul>{alert_html or '<li>No se detectaron alertas para Santa Fe en la respuesta consultada.</li>'}</ul></section>
 {''.join(cards)}
 <section class="sources"><h2>Estado de las fuentes consultadas</h2><p>Una fuente sin resultados no significa que no haya publicado: puede no exponer RSS, bloquear solicitudes automatizadas o requerir JavaScript.</p><table><thead><tr><th>Fuente</th><th>Estado</th><th>Resultados</th></tr></thead><tbody>{source_rows}</tbody></table>
 <h3>Redes sociales incluidas en el monitoreo</h3><p>Instagram y X pueden limitar el acceso automatizado. Este informe solo muestra metadatos públicos que la página haya entregado; no inicia sesión ni afirma haber leído publicaciones que no fueron accesibles.</p><table><thead><tr><th>Perfil</th><th>Estado de acceso</th></tr></thead><tbody>{social_rows or '<tr><td colspan="2">No hubo perfiles accesibles en esta ejecución.</td></tr>'}</tbody></table></section>
@@ -1139,15 +1100,12 @@ def run() -> tuple[Path, Path, int]:
                     social_statuses.append({"fuente": futures[future], "url": futures[future], "estado": f"error: {exc}", "social": True})
         statuses.extend(social_statuses)
 
-    # Clima/alertas como apartado de contexto (no se presenta como noticia de 24 h).
-    weather = get_weather(now)
-
     items = deduplicate([item for item in all_items if is_within_window(item.published_at, now)])
     # Orden explícito: normas, eventos y después noticias; dentro de cada bloque, más recientes primero.
     priority = {"Normativa": 0, "Evento": 1, "Noticia": 2}
     items.sort(key=lambda x: (priority.get(x.section, 9), -x.relevance, -x.published_at.timestamp()))
 
-    html_content = render_html(items, weather, statuses, now, window_start)
+    html_content = render_html(items, statuses, now, window_start)
     html_path.write_text(html_content, encoding="utf-8")
     write_txt(txt_path, items)
 
