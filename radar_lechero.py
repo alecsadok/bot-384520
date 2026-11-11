@@ -691,7 +691,7 @@ def parse_article(
         section="Evento" if is_event else "Noticia",
         tags=tags,
         event_date=event_date if upcoming_event else "",
-        date_label="Publicado" if page_published else "Fecha del RSS" if fallback_published_at else "Detectado",
+        date_label="Evento verificado" if upcoming_event else "Publicado" if page_published else "Fecha del RSS" if fallback_published_at else "Detectado",
         relevance=score if relevant else 20,
     )
     return item
@@ -1179,7 +1179,10 @@ CANDIDATOS:
                 kind == "event"
                 and event_date
                 and now.date() <= event_date.date() <= (now + timedelta(days=AI_EVENT_HORIZON_DAYS)).date()
-                and ai_event_date_visible(event_date, evidence_text)
+                and (
+                    item.date_label == "Evento verificado"
+                    or ai_event_date_visible(event_date, evidence_text)
+                )
             )
             if verified_event:
                 item.section = "Evento"
