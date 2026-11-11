@@ -869,6 +869,24 @@ def ai_title_matches(candidate_title: str, page_title: str) -> bool:
     return overlap >= 0.35 or normalize(candidate_title) in normalize(page_title)
 
 
+def ai_event_date_visible(event_date: datetime, body_text: str) -> bool:
+    """Comprueba que día y mes del evento figuren realmente en la página."""
+    if event_date.date() in {d.date() for d in extract_text_dates(body_text)}:
+        return True
+    months = [
+        "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+        "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+    ]
+    month = months[event_date.month - 1]
+    text = normalize(body_text)
+    day = event_date.day
+    # Admite formatos como "18 de noviembre", "18 y 19 de noviembre"
+    # o "18/11", aunque la página no imprima el año.
+    month_pattern = rf"\\b0?{day}\\b.{{0,55}}\\b{month}\\b"
+    numeric_pattern = rf"\\b0?{day}[/.-]0?{event_date.month}\\b"
+    return bool(re.search(month_pattern, text) or re.search(numeric_pattern, text))
+
+
 def ai_hard_excluded(text: str) -> bool:
     """Aplica exclusiones inequívocas aun cuando el modelo proponga un resultado."""
     ntext = normalize(text)
@@ -967,8 +985,8 @@ def verify_ai_candidate(candidate: dict[str, Any], now: datetime) -> Item | None
         event_date_value = parse_datetime(candidate.get("event_date"))
         page_dates = extract_text_dates(body_text[:10000])
         page_date_set = {d.date() for d in page_dates}
-        if event_date_value is None or event_date_value.date() not in page_date_set:
-            # Respaldo: tomar la primera fecha futura que realmente figura en la página.
+        if event_date_value is None or not ai_event_date_visible(event_date_value, body_text[:10000]):
+            # Respaldo: tomar la primera fecha futura con año que realmente figura en la página.
             future_dates = [
                 d for d in page_dates
                 if now.date() <= d.date() <= (now + timedelta(days=AI_EVENT_HORIZON_DAYS)).date()
@@ -982,9 +1000,18 @@ def verify_ai_candidate(candidate: dict[str, Any], now: datetime) -> Item | None
         event_date = event_date_value.strftime("%d/%m/%Y")
         location = clean_text(str(candidate.get("location") or ""), 180)
         organizer = clean_text(str(candidate.get("organizer") or ""), 180)
-        date_label = "Publicado" if published else "Detectado"
-        if published is None:
+        # No se conserva una fecha de publicación sugerida por el modelo si
+        # la página no ofrece metadatos verificables para un evento.
+        if page_published is None:
             published = now
+            date_label = "Detectado"
+        else:
+            published = page_published
+            date_label = "Publicado"
+        if location and normalize(location) not in normalize(full_text):
+            location = ""
+        if organizer and normalize(organizer) not in normalize(full_text):
+            organizer = ""
 
     if published is None:
         return None
