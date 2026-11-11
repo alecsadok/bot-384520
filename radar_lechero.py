@@ -1776,6 +1776,15 @@ def run() -> tuple[Path, Path, int]:
         reviewed_google_items, ai_status = review_google_news_with_local_ai(google_items, now)
         if reviewed_google_items is not None:
             google_items = reviewed_google_items
+        else:
+            # Si el modelo local no está disponible, vuelve al filtro determinístico
+            # para no volcar todos los resultados del RSS sin clasificación.
+            google_items = [
+                item for item in google_items
+                if is_relevant(f"{item.title} {item.summary}")[0]
+                and not ai_hard_excluded(f"{item.title} {item.summary}")
+            ]
+            ai_status["fallback_resultados"] = len(google_items)
         all_items.extend(google_items)
         statuses.append(ai_status)
         LOG.info("IA local: %s candidatos finales", len(google_items))
