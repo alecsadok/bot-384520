@@ -46,7 +46,8 @@ MAX_WORKERS = 4
 MIN_HOST_INTERVAL = 1.5
 MAX_LINKS_PER_SOURCE = 12
 MAX_FEED_ITEMS_PER_SOURCE = 15
-MAX_GOOGLE_NEWS_ITEMS = 30
+MAX_GOOGLE_NEWS_ITEMS = 12
+MAX_GOOGLE_NEWS_TOTAL = 70
 
 # Fuentes editoriales y técnicas. Se priorizan sitios oficiales y especializados.
 WEB_SOURCES: list[dict[str, str]] = [
@@ -620,46 +621,80 @@ def candidate_links(page_url: str, page_html: str, now: datetime) -> list[tuple[
     return [(u, t, c) for u, (t, c) in list(found.items())[:MAX_LINKS_PER_SOURCE]]
 
 
-def parse_article(url: str, title_hint: str, context_hint: str, source_name: str, now: datetime) -> Item | None:
+def parse_article(
+    url: str,
+    title_hint: str,
+    context_hint: str,
+    source_name: str,
+    now: datetime,
+    allow_upcoming_event: bool = False,
+    fallback_published_at: datetime | None = None,
+) -> Item | None:
     raw, final_url, status = fetch(url)
     if not raw:
         return None
     soup = BeautifulSoup(raw, "html.parser")
-    title = ""
     og_title = soup.find("meta", attrs={"property": "og:title"})
     h1 = soup.find("h1")
-    title = clean_text((og_title.get("content") if og_title else "") or (h1.get_text(" ", strip=True) if h1 else "") or title_hint, 300)
+    title = clean_text(
+        (og_title.get("content") if og_title else "")
+        or (h1.get_text(" ", strip=True) if h1 else "")
+        or title_hint,
+        300,
+    )
     if len(title) < 10:
         title = title_hint
+
     description = ""
     for attrs in ({"property": "og:description"}, {"name": "description"}, {"name": "twitter:description"}):
         tag = soup.find("meta", attrs=attrs)
         if tag and tag.get("content"):
             description = clean_text(tag.get("content"), 900)
             break
+
     article_node = soup.find("article") or soup.find("main") or soup.body or soup
     body_text = clean_text(article_node.get_text(" ", strip=True), 12000)
     text = f"{title} {description} {context_hint} {body_text}"
     relevant, tags, score = is_relevant(text)
-    if not relevant:
+
+    event_text = f"{title} {description} {context_hint} {body_text[:7000]}"
+    is_event = any(normalize(word) in normalize(event_text) for word in EVENT_WORDS)
+    event_date = guess_event_date(event_text, now) if is_event else ""
+    event_dt = parse_datetime(event_date) if event_date else None
+    upcoming_event = bool(
+        allow_upcoming_event
+        and is_event
+        and event_dt
+        and now.date() <= event_dt.date() <= (now + timedelta(days=AI_EVENT_HORIZON_DAYS)).date()
+        and ai_event_date_visible(event_dt, event_text)
+    )
+
+    if not relevant and not upcoming_event:
         return None
-    published = extract_published_date(soup)
+
+    page_published = extract_published_date(soup)
+    published = page_published or fallback_published_at
+    if published is None:
+        return None
     if not is_within_window(published, now):
-        return None
-    is_event = any(normalize(w) in normalize(f"{title} {description} {context_hint}") for w in EVENT_WORDS)
-    # No se toma la fecha de una jornada pasada como fecha futura del evento.
-    event_date = guess_event_date(f"{title} {description} {context_hint} {body_text[:5000]}", now) if is_event else ""
-    return Item(
+        # Un anuncio anterior se conserva únicamente cuando el artículo verifica
+        # una actividad futura y el buscador lo encontró en la ventana de 30 días.
+        if not upcoming_event or published < now - timedelta(days=30):
+            return None
+
+    item = Item(
         title=title,
         url=final_url or url,
         source=source_name,
         published_at=published,
-        summary=summarize(description or body_text or context_hint),
+        summary=summarize(description or body_text or context_hint, 650),
         section="Evento" if is_event else "Noticia",
         tags=tags,
-        event_date=event_date,
-        relevance=score,
+        event_date=event_date if upcoming_event else "",
+        date_label="Publicado" if page_published else "Fecha del RSS" if fallback_published_at else "Detectado",
+        relevance=score if relevant else 20,
     )
+    return item
 
 
 def scan_web_source(source: dict[str, str], now: datetime) -> tuple[list[Item], dict[str, Any]]:
@@ -695,24 +730,31 @@ def scan_web_source(source: dict[str, str], now: datetime) -> tuple[list[Item], 
     return results, status_row
 
 
-def google_news_queries() -> list[str]:
-    # Búsquedas centradas en lechería, ganado bovino y efectos de El Niño.
+def google_news_queries() -> list[tuple[str, str]]:
+    """Búsquedas gratuitas por RSS: noticias recientes y agenda de los próximos meses."""
     return [
-        '(lechería OR lechero OR tambo OR tambos) Argentina when:1d',
-        '("vacas lecheras" OR "rodeo lechero" OR "producción de leche" OR terneras) Argentina when:1d',
-        '(mastitis OR terneros OR vaquillonas OR reproducción bovina OR sanidad bovina) Argentina when:1d',
-        '(OCLA OR "precio de la leche" OR "industria láctea" OR lácteos) Argentina when:1d',
-        '("ganado bovino" OR bovinos OR ganadería) (sanidad OR nutrición OR bienestar OR reproducción OR alimentación) Argentina when:1d',
-        '(SENASA bovinos OR trazabilidad animal OR identificación electrónica bovina) Argentina when:1d',
-        '(forrajes OR alfalfa OR "maíz para silo" OR pasturas OR "silo de maíz" OR nutrición bovina) (tambo OR vacas OR ganado) Argentina when:1d',
-        '("El Niño" OR ENSO) (Argentina OR ganadería OR bovinos OR tambo OR pasturas OR forrajes) when:1d',
+        ('(lechería OR lechero OR tambo OR tambos) Argentina when:1d', "news"),
+        ('("vacas lecheras" OR "rodeo lechero" OR "producción de leche" OR terneras) Argentina when:1d', "news"),
+        ('(mastitis OR brucelosis bovina OR tuberculosis bovina OR queratoconjuntivitis OR sanidad bovina) Argentina when:1d', "news"),
+        ('(reproducción bovina OR genética lechera OR vaquillonas OR crianza de terneros) Argentina when:1d', "news"),
+        ('("precio de la leche" OR "precio al productor" OR costos del tambo OR rentabilidad lechera) Argentina when:1d', "news"),
+        ('(OCLA OR "industria láctea" OR exportaciones lácteas OR cooperativas lácteas) Argentina when:1d', "news"),
+        ('(forrajes OR alfalfa OR "maíz para silo" OR pasturas OR raciones OR nutrición bovina) (tambo OR vacas lecheras) Argentina when:1d', "news"),
+        ('(SENASA OR trazabilidad animal OR identificación electrónica bovina OR RENS​​PA) (lechería OR bovinos OR tambos) Argentina when:1d', "news"),
+        ('("El Niño" OR ENSO) (tambo OR vacas lecheras OR ganadería bovina OR pasturas OR forrajes) Argentina when:1d', "news"),
+        ('(robotización OR automatización OR ordeño robotizado OR tecnología para tambos OR maquinaria lechera) Argentina when:1d', "news"),
+        ('(jornada OR jornadas OR curso OR capacitación OR seminario OR congreso OR "día de campo" OR webinar) (lechería OR tambo OR "vacas lecheras") Argentina when:30d', "event"),
+        ('(encuentro OR taller OR charla OR exposición OR feria OR actualización técnica) (producción de leche OR ganado lechero OR tambos) Argentina when:30d', "event"),
+        ('(jornada OR curso OR seminario OR capacitación OR congreso) (lechería OR tambo OR bovinos) (Santa Fe OR Córdoba OR Entre Ríos OR Buenos Aires OR La Pampa) when:30d', "event"),
     ]
 
 
 def scan_google_news(now: datetime) -> tuple[list[Item], dict[str, Any]]:
     results: list[Item] = []
     seen: set[str] = set()
-    for query in google_news_queries():
+    event_candidates = 0
+
+    for query, query_kind in google_news_queries():
         url = "https://news.google.com/rss/search?q=" + quote_plus(query) + "&hl=es-419&gl=AR&ceid=AR:es-419"
         try:
             feed_raw, _, _ = fetch(url)
@@ -721,12 +763,13 @@ def scan_google_news(now: datetime) -> tuple[list[Item], dict[str, Any]]:
             parsed = feedparser.parse(feed_raw)
         except Exception:
             continue
+
         for entry in parsed.entries[:MAX_GOOGLE_NEWS_ITEMS]:
             title = clean_text(entry.get("title", ""), 300)
             link = entry.get("link", "")
             if not title or not link or link in seen:
                 continue
-            seen.add(link)
+
             st = entry.get("published_parsed")
             pub = None
             if st:
@@ -736,24 +779,64 @@ def scan_google_news(now: datetime) -> tuple[list[Item], dict[str, Any]]:
                     pass
             if pub is None:
                 pub = parse_datetime(entry.get("published"))
+            if pub is None:
+                continue
+
             source_obj = entry.get("source", {}) or {}
             source_name = clean_text(source_obj.get("title", "Google News"), 120)
-            summary = clean_text(entry.get("summary", ""), 600)
-            relevant, tags, score = is_relevant(f"{title} {summary}")
-            if relevant and is_within_window(pub, now):
-                event = any(normalize(w) in normalize(title) for w in EVENT_WORDS)
+            summary = clean_text(entry.get("summary", ""), 900)
+            title_summary = f"{title} {summary}"
+            is_event = any(normalize(word) in normalize(title_summary) for word in EVENT_WORDS)
+
+            if query_kind == "event":
+                # La publicación puede ser anterior, pero el evento debe ser futuro
+                # y estar documentado en la página original.
+                if not is_event or pub < now - timedelta(days=30):
+                    continue
+                seen.add(link)
+                event_candidates += 1
+                item = parse_article(
+                    link,
+                    title,
+                    summary,
+                    f"Google News · {source_name}",
+                    now,
+                    allow_upcoming_event=True,
+                    fallback_published_at=pub,
+                )
+                if item:
+                    results.append(item)
+            elif is_within_window(pub, now):
+                seen.add(link)
+                relevant, tags, score = is_relevant(title_summary)
+                # Google News ya devuelve candidatos de consultas sectoriales.
+                # La IA local evaluará los que no entren por coincidencia literal.
+                if ai_hard_excluded(title_summary):
+                    continue
                 results.append(Item(
                     title=title,
                     url=link,
                     source=f"Google News · {source_name}",
                     published_at=pub,
                     summary=summary or "Resultado detectado por Google News; abrir la fuente para consultar el contenido completo.",
-                    section="Evento" if event else "Noticia",
+                    section="Evento" if is_event else "Noticia",
                     tags=tags,
-                    event_date=guess_event_date(f"{title} {summary}", now) if event else "",
-                    relevance=score,
+                    event_date=guess_event_date(title_summary, now) if is_event else "",
+                    relevance=score if relevant else 15,
                 ))
-    return results, {"fuente": "Google News RSS", "url": "https://news.google.com/", "estado": "consultada", "resultados": len(results)}
+
+            if len(results) >= MAX_GOOGLE_NEWS_TOTAL:
+                break
+        if len(results) >= MAX_GOOGLE_NEWS_TOTAL:
+            break
+
+    return results, {
+        "fuente": "Google News RSS (búsqueda gratuita)",
+        "url": "https://news.google.com/",
+        "estado": "consultada",
+        "candidatos_eventos": event_candidates,
+        "resultados": len(results),
+    }
 
 
 # ---------------------------------------------------------------------------
