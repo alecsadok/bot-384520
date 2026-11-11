@@ -761,9 +761,11 @@ def scan_google_news(now: datetime) -> tuple[list[Item], dict[str, Any]]:
 # ---------------------------------------------------------------------------
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 OPENAI_DOCS_URL = "https://developers.openai.com/api/docs/guides/tools-web-search"
-AI_DEFAULT_MODEL = "gpt-6-luna"
+AI_DEFAULT_MODEL = "gpt-6-astra"
 AI_MAX_CANDIDATES = 24
 AI_EVENT_HORIZON_DAYS = 90
+MAX_BULLETIN_CANDIDATES = 70
+MAX_BULLETIN_AI_DOCS = 24
 
 AI_ITEM_SCHEMA = {
     "type": "object",
@@ -1150,153 +1152,399 @@ def scan_ai_web_search(now: datetime) -> tuple[list[Item], dict[str, Any]]:
         return [], status_row
 
 
+
 # ---------------------------------------------------------------------------
-# Boletín Oficial: Primera Sección (Legislación y Avisos Oficiales)
+# Boletín Oficial: extracción de fichas y análisis orientado a lechería
 # ---------------------------------------------------------------------------
-def legal_impact_copy(title: str, body: str, url: str, pub: datetime, tags: list[str]) -> str:
-    text = normalize(f"{title} {body}")
-    effects: list[str] = []
-    rules = [
-        (("credito", "financiamiento", "financiacion", "subsidio", "bonificacion", "tasa preferencial", "asistencia financiera"),
-         "La norma contempla herramientas de financiamiento, asistencia o condiciones económicas que podrían ser relevantes para productores alcanzados. Conviene verificar requisitos, beneficiarios, plazos y organismo de aplicación."),
-        (("emergencia agropecuaria", "desastre agropecuario", "prorroga", "alivio fiscal", "exencion", "beneficio fiscal"),
-         "Puede habilitar alivios, prórrogas o tratamientos especiales para quienes cumplan las condiciones previstas. El productor debe comprobar si su establecimiento y su zona están incluidos."),
-        (("retencion", "derechos de exportacion", "arancel", "exportacion", "importacion", "comercializacion"),
-         "Puede modificar condiciones de comercialización, costos o incentivos de la cadena láctea. El efecto sobre el precio de la leche al productor no es automático y depende de la implementación y del mercado."),
-        (("sanidad animal", "vacunacion", "brucelosis", "tuberculosis", "trazabilidad", "identificacion electronica", "renspa", "sigsa"),
-         "Incide en obligaciones o procedimientos sanitarios y de identificación del ganado. Para el tambo, el valor práctico está en conocer qué animales, registros, plazos y responsables quedan alcanzados."),
-        (("leche", "lacteo", "lacteos", "tambo", "establecimiento lechero", "producto alimenticio", "codigo alimentario"),
-         "Tiene relación con la producción, elaboración, inocuidad o circulación de leche y productos lácteos. Puede requerir adecuaciones documentales, operativas o sanitarias según el tipo de establecimiento alcanzado."),
-        (("forraje", "semilla", "pastura", "fertilizante", "agroquimico", "agua", "riego"),
-         "Puede relacionarse con insumos y recursos que integran los costos de alimentación y producción del tambo. Es necesario confirmar qué productos, actividades y sujetos quedan comprendidos."),
-    ]
-    for tokens, message in rules:
-        if any(token in text for token in tokens):
-            effects.append(message)
-    if not effects:
-        effects.append(
-            "La publicación contiene términos vinculados con el sector agropecuario, pero el texto disponible no permite afirmar un beneficio directo para todos los tambos. Antes de comunicar un impacto, hay que revisar el alcance, los sujetos obligados, la vigencia y los anexos de la norma."
+BOLETIN_DISCOVERY_TERMS = [
+    "leche", "lácteo", "lechero", "lechería", "tambo", "tambero", "ordeño",
+    "bovino", "bovina", "vacuno", "ganado", "ganadería", "animal", "veterinario",
+    "veterinaria", "senasa", "sanidad", "brucelosis", "tuberculosis", "aftosa",
+    "zoonosis", "trazabilidad", "identificación animal", "renspa", "sigsa",
+    "forraje", "pastura", "alfalfa", "silaje", "maíz para silo", "alimento balanceado",
+    "nutrición animal", "agropecuario", "agropecuaria", "agricultura", "semillas",
+    "fitosanitario", "fertilizante", "inocuidad alimentaria", "alimentos",
+    "emergencia agropecuaria", "emergencia sanitaria", "producción agropecuaria",
+    "registro sanitario", "establecimiento rural", "establecimiento productivo",
+    "crédito agropecuario", "financiamiento agropecuario", "economía regional",
+    "comercio exterior", "exportación de productos lácteos", "industria láctea",
+]
+
+
+def bulletin_discovery_score(text: str) -> int:
+    ntext = normalize(text)
+    return sum(
+        2 if len(normalize(term).split()) > 1 else 1
+        for term in BOLETIN_DISCOVERY_TERMS
+        if contains_term(ntext, term)
+    )
+
+
+def bulletin_edition_date(soup: BeautifulSoup) -> datetime | None:
+    published = extract_published_date(soup)
+    if published:
+        return published
+    page_text = clean_text(soup.get_text(" ", strip=True), 12000)
+    candidates = extract_text_dates(page_text[:4000])
+    return candidates[0] if candidates else None
+
+
+def bulletin_listing_candidates(soup: BeautifulSoup, page_url: str) -> list[dict[str, str]]:
+    """Levanta enlaces individuales de la Primera Sección y prioriza candidatos sectoriales."""
+    container = soup.find(id="avisosSeccionDiv") or soup.find("main") or soup.body or soup
+    candidates: dict[str, dict[str, str]] = {}
+
+    for anchor in container.find_all("a", href=True):
+        href_raw = str(anchor.get("href") or "").strip()
+        if not href_raw or "?" in href_raw:
+            continue
+        article_url = absolute_url(page_url, href_raw)
+        parsed = urlparse(article_url)
+        if parsed.scheme not in ("http", "https") or not host_matches(article_url, BOLETIN_HOME):
+            continue
+        if article_url.rstrip("/") == page_url.rstrip("/"):
+            continue
+        path = normalize(parsed.path)
+        if any(token in path for token in ("/seccion/", "/busqueda", "/ayuda", "/contacto", "/login")):
+            continue
+
+        context_node = anchor
+        for _ in range(3):
+            if context_node.parent and context_node.parent is not container:
+                context_node = context_node.parent
+        local_context = clean_text(context_node.get_text(" ", strip=True), 1100)
+        title = clean_text(anchor.get_text(" ", strip=True), 320)
+        if len(title) < 12:
+            heading = context_node.find(["h1", "h2", "h3", "h4"])
+            title = clean_text(heading.get_text(" ", strip=True), 320) if heading else local_context[:320]
+        score = bulletin_discovery_score(f"{title} {local_context}")
+        if score <= 0:
+            continue
+
+        current = candidates.get(article_url)
+        record = {
+            "url": article_url,
+            "title_hint": title,
+            "context": local_context,
+            "discovery_score": str(score),
+        }
+        if current is None or score > int(current["discovery_score"]):
+            candidates[article_url] = record
+
+    ordered = sorted(
+        candidates.values(),
+        key=lambda row: (-int(row["discovery_score"]), row["url"]),
+    )
+    return ordered[:MAX_BULLETIN_CANDIDATES]
+
+
+def fetch_bulletin_detail(candidate: dict[str, str], edition_date: datetime | None) -> dict[str, Any] | None:
+    """Descarga una ficha oficial y extrae título, área, tipo, texto y fecha."""
+    raw, article_url, status = fetch(candidate["url"], timeout=(12, 30))
+    if not raw or status >= 400:
+        return None
+
+    soup = BeautifulSoup(raw, "html.parser")
+    title_area = soup.find(id="tituloDetalleAviso")
+    title_heading = title_area.find("h2") if title_area else None
+    area_heading = title_area.find("h1") if title_area else None
+
+    title_tag = title_heading or soup.find("h1") or soup.find("title")
+    title = clean_text(
+        title_tag.get_text(" ", strip=True) if title_tag else candidate.get("title_hint", ""),
+        320,
+    )
+    if len(title) < 8:
+        title = clean_text(candidate.get("title_hint", ""), 320)
+
+    area = clean_text(area_heading.get_text(" ", strip=True), 220) if area_heading else ""
+    type_node = soup.find(class_="puntero first-section")
+    notice_type = clean_text(type_node.get_text(" ", strip=True), 120) if type_node else ""
+
+    content_node = soup.find(id="cuerpoDetalleAviso")
+    if content_node is None:
+        content_node = soup.find("article") or soup.find("main") or soup.body or soup
+    body = clean_text(content_node.get_text(" ", strip=True), 14000)
+    if len(body) < 45:
+        body = clean_text(candidate.get("context", ""), 14000)
+    if len(body) < 45:
+        return None
+
+    publication_date = extract_published_date(soup) or edition_date
+    return {
+        "url": article_url or candidate["url"],
+        "title": title,
+        "area": area,
+        "notice_type": notice_type,
+        "body": body,
+        "published_at": publication_date,
+    }
+
+
+BOLETIN_AI_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "index": {"type": "integer"},
+                    "relevant": {"type": "boolean"},
+                    "category": {"type": "string"},
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                    "score": {"type": "integer"},
+                    "summary": {"type": "string"},
+                    "impact": {"type": "string"},
+                    "affected_actors": {"type": "string"},
+                    "what_to_check": {"type": "string"},
+                    "evidence": {"type": "string"},
+                },
+                "required": [
+                    "index", "relevant", "category", "tags", "score", "summary",
+                    "impact", "affected_actors", "what_to_check", "evidence",
+                ],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["items"],
+    "additionalProperties": False,
+}
+
+
+def analyze_bulletin_documents(documents: list[dict[str, Any]]) -> tuple[dict[int, dict[str, Any]] | None, str]:
+    """Clasifica en una sola llamada las normas candidatas usando texto oficial."""
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        return None, "IA no configurada: falta OPENAI_API_KEY; se usa el filtro de respaldo."
+
+    compact_docs = []
+    for index, doc in enumerate(documents):
+        compact_docs.append({
+            "index": index,
+            "title": doc["title"],
+            "area": doc["area"],
+            "type": doc["notice_type"],
+            "url": doc["url"],
+            "publication_date": (
+                doc["published_at"].strftime("%d/%m/%Y")
+                if doc["published_at"] else ""
+            ),
+            "official_text": doc["body"][:5000],
+        })
+
+    prompt_text = f"""
+Analizá estas publicaciones reales de la Primera Sección del Boletín Oficial argentino.
+Tu función es seleccionar exclusivamente las normas y avisos que puedan afectar de
+manera concreta a la lechería, los tambos o el ganado bovino, en especial el ganado lechero.
+
+Incluí, cuando corresponda:
+- producción de leche, tambos, establecimientos y plantas lácteas;
+- sanidad, bienestar, identificación y trazabilidad de bovinos;
+- vacunas, enfermedades, medicamentos veterinarios y requisitos de SENASA;
+- reproducción, genética, crianza y movimiento de ganado lechero;
+- alimentación animal, raciones, forrajes, pasturas, semillas y reservas;
+- habilitaciones, registros, transporte, inocuidad y comercialización de leche;
+- impuestos, créditos, emergencias, financiamiento y comercio cuando el texto
+  alcance expresamente al sector agropecuario, a economías regionales o a la cadena láctea.
+
+EXCLUÍ:
+- designaciones y renuncias de personal sin efecto sectorial;
+- normas administrativas genéricas sin incidencia identificable en el sector;
+- agricultura, cultivos y mercados de granos sin relación expresa con alimentación animal;
+- faena, carne, feedlots y producción ganadera cárnica sin vinculación lechera.
+
+Reglas de análisis:
+- No alcanza con que aparezca una palabra sectorial en un considerando incidental.
+- Explicá qué cambia, a quién alcanza y si el efecto es directo o potencial.
+- No infieras beneficios, obligaciones, subsidios ni exenciones que el texto no establezca.
+- La puntuación va de 0 a 100. Usá relevancia >= 60 solo cuando el impacto sea claro.
+- Si no es relevante, devolvé relevant=false, score=0 y textos vacíos.
+- "evidence" debe ser una cita breve copiada literalmente del texto oficial que sustente
+  el vínculo sectorial. Si no encontrás evidencia textual, marcá relevant=false.
+- "what_to_check" debe señalar requisitos, sujetos, plazos o vigencia que el productor
+  debería verificar; no reemplaza asesoramiento legal.
+- Devolvé una entrada por cada documento, conservando exactamente su index.
+- No inventes información. Respondé exclusivamente con el JSON del esquema.
+
+DOCUMENTOS:
+{json.dumps(compact_docs, ensure_ascii=False)}
+""".strip()
+
+    payload = {
+        "model": os.getenv("OPENAI_BULLETIN_MODEL", AI_DEFAULT_MODEL),
+        "reasoning": {"effort": "low"},
+        "max_output_tokens": 7000,
+        "input": [
+            {
+                "role": "system",
+                "content": "Sos un analista jurídico-editorial del sector lechero argentino. El texto oficial es la única base de tus conclusiones.",
+            },
+            {"role": "user", "content": prompt_text},
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "bot384520_bulletin_relevance",
+                "strict": True,
+                "schema": BOLETIN_AI_SCHEMA,
+            }
+        },
+    }
+
+    try:
+        response = make_session().post(
+            OPENAI_RESPONSES_URL,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=(20, 180),
         )
-    distinct = list(dict.fromkeys(effects))
-    tag_text = ", ".join(tags[:4]) if tags else "actividad agropecuaria"
-    # Copy institucional, sin atribuir efectos jurídicos que el articulado no exprese.
+        if response.status_code >= 400:
+            return None, f"Error IA HTTP {response.status_code}: {clean_text(response.text, 300)}"
+        output_text = ai_output_text(response.json())
+        if not output_text:
+            return None, "La IA no devolvió contenido estructurado; se usa el filtro de respaldo."
+        data = json.loads(output_text)
+        rows = data.get("items", [])
+        if not isinstance(rows, list):
+            return None, "La respuesta IA no contiene una lista válida; se usa el filtro de respaldo."
+        mapped: dict[int, dict[str, Any]] = {}
+        for row in rows:
+            if isinstance(row, dict) and isinstance(row.get("index"), int):
+                mapped[row["index"]] = row
+        return mapped, f"análisis IA completado: {len(mapped)} documentos evaluados"
+    except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
+        return None, f"Error de análisis IA: {clean_text(str(exc), 300)}"
+
+
+def bulletin_ai_copy(doc: dict[str, Any], analysis: dict[str, Any]) -> str:
+    pub = doc["published_at"]
+    pub_label = pub.strftime("%d/%m/%Y") if pub else "fecha no identificada"
+    impact = clean_text(str(analysis.get("impact") or ""), 900)
+    actors = clean_text(str(analysis.get("affected_actors") or ""), 500)
+    what_to_check = clean_text(str(analysis.get("what_to_check") or ""), 600)
+    evidence = clean_text(str(analysis.get("evidence") or ""), 420)
     return (
-        f"📌 {title}\n\n"
-        f"El Boletín Oficial publicó esta disposición el {pub.strftime('%d/%m/%Y')}. "
-        f"Su contenido se relaciona con {tag_text}.\n\n"
-        f"¿Qué debe mirar el sector tambero?\n"
-        + " ".join(distinct)
-        + "\n\n"
-        "Antes de tomar decisiones, revisar el texto oficial completo, sus anexos, la fecha de entrada en vigencia "
-        "y la autoridad de aplicación. Este resumen es orientativo y no reemplaza la lectura de la norma.\n\n"
-        f"🔎 Texto oficial: {url}"
+        f"📌 {doc['title']}\n\n"
+        f"Publicación oficial: {pub_label} · {doc['url']}\n\n"
+        f"**Impacto para la lechería:** {impact}\n\n"
+        f"**A quiénes puede alcanzar:** {actors}\n\n"
+        f"**Qué conviene verificar:** {what_to_check}\n\n"
+        f"**Fundamento en el texto oficial:** “{evidence}”\n\n"
+        "Análisis orientativo elaborado con IA a partir del texto oficial. "
+        "Verificar el articulado completo, anexos, sujetos alcanzados y vigencia "
+        "antes de tomar decisiones o comunicar obligaciones o beneficios."
     )
 
 
 def scrape_bulletin(now: datetime) -> tuple[list[Item], dict[str, Any]]:
+    """Recolector propio de la Primera Sección; usa IA para priorizar normas sectoriales."""
     raw, final_url, status = fetch(BOLETIN_URL)
-    status_row = {"fuente": "Boletín Oficial – Primera Sección", "url": BOLETIN_URL, "estado": "consultada" if raw else f"sin acceso (HTTP {status or 'error'})"}
+    status_row: dict[str, Any] = {
+        "fuente": "Boletín Oficial – Primera Sección",
+        "url": BOLETIN_URL,
+        "estado": "consultada" if raw else f"sin acceso (HTTP {status or 'error'})",
+        "resultados": 0,
+    }
     if not raw:
         return [], status_row
-    soup = BeautifulSoup(raw, "html.parser")
-    page_text = clean_text(soup.get_text(" ", strip=True), 16000)
-    edition_dates = extract_text_dates(page_text[:2500])
-    edition_date = edition_dates[0] if edition_dates else None
+
+    listing_soup = BeautifulSoup(raw, "html.parser")
+    edition_date = bulletin_edition_date(listing_soup)
+    candidates = bulletin_listing_candidates(listing_soup, final_url or BOLETIN_URL)
+    status_row["edicion"] = edition_date.strftime("%d/%m/%Y") if edition_date else "fecha no identificada"
+    status_row["enlaces_candidatos"] = len(candidates)
+
+    documents: list[dict[str, Any]] = []
+    if candidates:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            futures = [
+                executor.submit(fetch_bulletin_detail, candidate, edition_date)
+                for candidate in candidates
+            ]
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    document = future.result()
+                    if document:
+                        documents.append(document)
+                except Exception as exc:
+                    LOG.debug("Ficha del Boletín Oficial: %s", exc)
+
+    documents.sort(key=lambda doc: (doc["published_at"] or datetime.min.replace(tzinfo=TZ), doc["title"]))
+    documents = [
+        doc for doc in documents
+        if doc["published_at"] is not None and is_within_window(doc["published_at"], now)
+    ][:MAX_BULLETIN_AI_DOCS]
+
+    status_row["fichas_recuperadas"] = len(documents)
+    if not documents:
+        status_row["estado"] = "consultada; no se recuperaron fichas sectoriales con fecha verificable"
+        return [], status_row
+
+    analyses, analysis_status = analyze_bulletin_documents(documents)
     results: list[Item] = []
 
-    anchors = soup.find_all("a", href=True)
-    candidates: dict[str, str] = {}
-    for a in anchors:
-        href = absolute_url(final_url, a["href"])
-        title = clean_text(a.get_text(" ", strip=True), 300)
-        if len(title) < 14:
-            continue
-        # Se aceptan las páginas individuales y los enlaces internos con título de norma.
-        p = urlparse(href)
-        if not host_matches(href, BOLETIN_HOME):
-            continue
-        context_node = a
-        for _ in range(2):
-            if context_node.parent:
-                context_node = context_node.parent
-        local_context = clean_text(context_node.get_text(" ", strip=True), 700)
-        relevant, tags, score = is_relevant(f"{title} {local_context}")
-        is_notice_link = any(word in normalize(href) for word in ("detalleaviso", "aviso", "norma"))
-        if relevant or (is_notice_link and any(normalize(term) in normalize(local_context) for term in ("leche", "bovino", "agropecuario", "agricultura", "ganaderia", "sanidad animal"))):
-            candidates[href] = title or local_context[:250]
-    # Respaldo: filas/tarjetas que no tienen un href individual pueden contener títulos.
-    if not candidates:
-        for node in soup.find_all(["article", "li", "tr", "div"]):
-            txt = clean_text(node.get_text(" ", strip=True), 500)
-            relevant, _, _ = is_relevant(txt)
-            if relevant and len(txt) > 35:
-                a = node.find("a", href=True)
-                link = absolute_url(final_url, a["href"]) if a else BOLETIN_URL
-                candidates[link] = txt[:300]
-
-    candidate_pairs = [(href, title_hint) for href, title_hint in list(candidates.items())[:50] if href != BOLETIN_URL]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        futures = [executor.submit(fetch, href) for href, _ in candidate_pairs]
-        for future, (href, title_hint) in zip(futures, candidate_pairs):
+    for index, doc in enumerate(documents):
+        analysis = analyses.get(index) if analyses is not None else None
+        full_text = f"{doc['title']} {doc['area']} {doc['body']}"
+        if analyses is not None:
+            if not isinstance(analysis, dict) or not analysis.get("relevant"):
+                continue
             try:
-                article_html, article_url, article_status = future.result()
-            except Exception:
+                score = max(0, min(100, int(analysis.get("score", 0))))
+            except (TypeError, ValueError):
+                score = 0
+            evidence = clean_text(str(analysis.get("evidence") or ""), 420)
+            normalized_body = normalize(doc["body"])
+            if score < 60 or not evidence or normalize(evidence) not in normalized_body:
                 continue
-            if not article_html:
-                pub = edition_date
-                relevant, tags, score = is_relevant(title_hint)
-                anchor_text = normalize(title_hint)
-                sector_anchor = any(term in anchor_text for term in ("leche", "lact", "tambo", "bovino", "ganad", "agropec", "agricultur", "animal", "forraj", "semilla", "veterin", "senasa"))
-                if relevant and sector_anchor and is_within_window(pub, now):
-                    fallback_summary = "Publicación detectada en la edición diaria. La ficha o el texto completo no pudo recuperarse automáticamente; abrir el enlace oficial para revisar el articulado."
-                    results.append(Item(
-                        title=title_hint,
-                        url=href,
-                        source="Boletín Oficial – Primera Sección",
-                        published_at=pub,
-                        summary=fallback_summary,
-                        section="Normativa",
-                        tags=tags,
-                        legal_copy=legal_impact_copy(title_hint, title_hint, href, pub, tags),
-                        relevance=score + 5,
-                    ))
+            summary = clean_text(str(analysis.get("summary") or ""), 700)
+            impact = clean_text(str(analysis.get("impact") or ""), 900)
+            if len(summary) < 30 or len(impact) < 30:
                 continue
-            article_soup = BeautifulSoup(article_html, "html.parser")
-            title_tag = article_soup.find("h1") or article_soup.find("title")
-            title = clean_text(title_tag.get_text(" ", strip=True) if title_tag else title_hint, 320)
-            article_node = article_soup.find("article") or article_soup.find("main") or article_soup.body or article_soup
-            body = clean_text(article_node.get_text(" ", strip=True), 14000)
-            full = f"{title} {body}"
-            relevant, tags, score = is_relevant(full)
-            anchor_text = normalize(full)
-            sector_anchor = any(term in anchor_text for term in ("leche", "lact", "tambo", "bovino", "ganad", "agropec", "agricultur", "animal", "forraj", "semilla", "veterin", "senasa"))
-            if not relevant or not sector_anchor:
+            tags = [
+                clean_text(str(tag), 70)
+                for tag in analysis.get("tags", [])
+                if clean_text(str(tag), 70)
+            ][:6]
+            category = clean_text(str(analysis.get("category") or "Normativa sectorial"), 100)
+            if category and category not in tags:
+                tags.insert(0, category)
+            legal_copy = bulletin_ai_copy(doc, analysis)
+            relevance = score
+        else:
+            relevant, tags, score = is_relevant(full_text)
+            if not relevant:
                 continue
-            pub = extract_published_date(article_soup) or edition_date
-            # La Primera Sección muestra la edición consultada. Sin fecha visible no se inventa.
-            if not is_within_window(pub, now):
-                continue
-            summary = summarize(body, 450)
-            item = Item(
-                title=title,
-                url=article_url or href,
-                source="Boletín Oficial – Primera Sección",
-                published_at=pub,
-                summary=summary,
-                section="Normativa",
-                tags=tags,
-                legal_copy=legal_impact_copy(title, body, article_url or href, pub, tags),
-                relevance=score + 5,
+            summary = summarize(doc["body"], 450)
+            legal_copy = legal_impact_copy(
+                doc["title"], doc["body"], doc["url"], doc["published_at"], tags
             )
-            results.append(item)
+            relevance = min(100, score + 5)
 
-    # Si el sitio no expone ficha individual detectable, el reporte conserva estado transparente.
-    status_row["edicion"] = edition_date.strftime("%d/%m/%Y") if edition_date else "fecha no identificada en HTML"
-    status_row["enlaces_candidatos"] = len(candidates)
+        results.append(Item(
+            title=doc["title"],
+            url=doc["url"],
+            source="Boletín Oficial – Análisis IA" if analyses is not None else "Boletín Oficial – Filtro de respaldo",
+            published_at=doc["published_at"],
+            summary=summary,
+            section="Normativa",
+            tags=tags,
+            legal_copy=legal_copy,
+            relevance=relevance,
+        ))
+
+    status_row["analisis_ia"] = analysis_status
+    status_row["documentos_analizados"] = len(analyses) if analyses is not None else 0
     status_row["resultados"] = len(results)
-    if not candidates:
-        status_row["estado"] = "consultada; el HTML no expuso fichas individuales detectables"
+    status_row["estado"] = (
+        f"{analysis_status}; {len(results)} normas relevantes seleccionadas"
+        if analyses is not None
+        else f"{analysis_status}; filtro de respaldo produjo {len(results)} resultados"
+    )
     return results, status_row
+
 
 # ---------------------------------------------------------------------------
 # Redes sociales (consulta de páginas públicas, sin autenticación)
