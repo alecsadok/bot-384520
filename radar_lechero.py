@@ -21,7 +21,7 @@ import unicodedata
 from dataclasses import dataclass, asdict
 from datetime import date, datetime, time as dt_time, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 from urllib.parse import quote_plus, urljoin, urlparse
 from zoneinfo import ZoneInfo
 
@@ -1000,7 +1000,7 @@ def render_html(items: list[Item], statuses: list[dict[str, Any]], now: datetime
 header{{background:#174b3a;color:white;padding:34px max(22px,calc((100% - 1100px)/2)) 28px}}
 header h1{{margin:0;font-size:30px}}header p{{margin:6px 0;color:#d7e9df}}main{{max-width:1100px;margin:24px auto;padding:0 18px}}
 .metrics{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:24px}}
-.metric,.section,.weather,.sources{{background:white;border:1px solid var(--line);border-radius:12px;padding:18px}}
+.metric,.section,.sources{{background:white;border:1px solid var(--line);border-radius:12px;padding:18px}}
 .metric strong{{display:block;font-size:27px;color:var(--green)}}.metric span{{font-size:13px;color:var(--muted)}}
 h2{{font-size:21px;margin:0 0 14px}}h2 span{{font-size:13px;color:var(--muted);font-weight:normal}}
 .section{{margin:18px 0}}.item{{padding:17px 0;border-top:1px solid var(--line)}}.item:first-of-type{{border-top:0}}
