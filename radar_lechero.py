@@ -913,9 +913,9 @@ def scan_google_news(now: datetime) -> tuple[list[Item], dict[str, Any]]:
                     source=source_name,
                     published_at=pub,
                     summary=summary or "Resultado detectado por Google News; abrir la fuente para consultar el contenido completo.",
-                    section="Evento" if is_event else "Noticia",
+                    section="Noticia",
                     tags=tags,
-                    event_date=guess_event_date(title_summary, now) if is_event else "",
+                    event_date="",
                     relevance=score if relevant else 15,
                     discovered_via_google_news=True,
                 ))
@@ -1119,193 +1119,17 @@ def assign_editorial_metadata(items: list[Item]) -> None:
 
 
 def filter_google_news_fallback(items: list[Item]) -> list[Item]:
-    """Fallback determinístico: preserva somente itens tematicamente relevantes."""
-    return [
-        item for item in items
-        if is_relevant(f"{item.title} {item.summary}")[0]
-        and not ai_hard_excluded(f"{item.title} {item.summary}")
-    ]
-
-
-def review_editorial_candidates_with_local_ai(items: list[Item], now: datetime) -> tuple[list[Item] | None, dict[str, Any]]:
-    """Evalúa noticias de todas las procedencias con un criterio editorial común."""
-    status_row = {
-        "fuente": f"Revisión editorial local · {OLLAMA_MODEL}",
-        "url": OLLAMA_MODEL_LIBRARY_URL,
-        "estado": "pendiente",
-        "resultados": 0,
-    }
-    if not items:
-        status_row["estado"] = "sin candidatos para analizar"
-        return [], status_row
-    assign_editorial_metadata(items)
-    available, reason = local_ai_is_available()
-    if not available:
-        status_row["estado"] = f"{reason}; se conserva la selección temática convencional"
-        return None, status_row
-
-    # Pertinencia y actualidad ordenan la revisión. La clase de fuente no suma
-    # ni resta puntos, por lo que prensa e instituciones compiten en igualdad.
-    candidates = sorted(
-        items,
-        key=lambda item: (item.relevance, item.published_at.timestamp()),
-        reverse=True,
-    )[:MAX_EDITORIAL_AI_ITEMS]
-    candidate_ids = {id(item) for item in candidates}
-    leftovers = [
-        item for item in items
-        if id(item) not in candidate_ids
-        and not ai_hard_excluded(f"{item.title} {item.summary}")
-        and (not item.discovered_via_google_news or is_relevant(f"{item.title} {item.summary}")[0])
-    ]
-    reviewed: list[Item] = []
-
-    for batch_start in range(0, len(candidates), LOCAL_AI_BATCH_SIZE):
-        batch = candidates[batch_start:batch_start + LOCAL_AI_BATCH_SIZE]
-        rows = []
-        for local_index, item in enumerate(batch):
-            rows.append({
-                "index": local_index,
-                "title": item.title,
-                "source": item.source,
-                "source_group": item.editorial_group,
-                "published_at": item.published_at.strftime("%d/%m/%Y %H:%M"),
-                "url": item.url,
-                "preliminary_section": item.section,
-                "preliminary_event_date": item.event_date,
-                "event_date_verified": item.event_date_verified,
-                "text_from_source": item.summary[:1100],
-            })
-        prompt = f"""
-Fecha actual en Argentina: {now.strftime("%d/%m/%Y")} ({TZ_NAME}).
-
-Actuá como editor de contenidos para Instagram de INTA Lechero. Los candidatos
-provienen de fuentes institucionales, científicas, sectoriales y periodísticas.
-Una noticia periodística puede ser tan valiosa como una institucional: NO puntúes
-mejor una publicación solo por ser del INTA ni descartes una noticia por provenir
-de un medio. Evaluá el contenido y su utilidad para productores, profesionales,
-técnicos y personas vinculadas con la lechería. La procedencia identifica la fuente,
-pero no reemplaza la evaluación editorial.
-
-Buscá noticias y materiales sobre tambos, producción de leche, industria láctea,
-vacas lecheras, crianza y recría, reproducción, genética, sanidad, bienestar,
-nutrición, forrajes, pasturas, reservas, tecnología, economía, políticas sectoriales,
-investigación aplicada y capacitación; también jornadas, cursos y congresos.
-
-Excluí contenido centrado exclusivamente en carne, faena, feedlots, novillos,
-agricultura o mercados de granos sin relación expresa con alimentación animal.
-No incluyas pronósticos ni noticias meteorológicas generales. Los temas climáticos
-solo sirven cuando la fuente explica consecuencias concretas para tambos, rodeos,
-pasturas o reservas forrajeras.
-
-Reglas:
-- El título y el texto provistos son la única evidencia. No completes datos ausentes.
-- "news" requiere publicación dentro de los últimos {NEWS_WINDOW_DAYS} días.
-- "event" solo si hay actividad futura verificable dentro de {AI_EVENT_HORIZON_DAYS} días.
-- No confundas la fecha de publicación y la fecha del evento.
-- Si event_date_verified es false, la fecha futura debe aparecer inequívocamente en el texto.
-- Lugar y organizador solo se completan cuando aparecen expresamente.
-- relevant=false si la relación con lechería es incidental, marginal o insuficiente.
-- score (40 a 100) pondera pertinencia, utilidad, novedad, actualidad y calidad de evidencia.
-  NO uses el tipo de fuente como ventaja automática.
-- summary: síntesis fiel del contenido disponible, sin agregar datos.
-- instagram_angle: propuesta breve de enfoque para un post, no redactes un copy.
-  Debe poder desarrollarse con el texto recuperado. Si no alcanza, dejalo vacío.
-- format_suggestion: Carrusel para varios datos/pasos; Placa para un dato puntual;
-  Reel solo si se describe una demostración/experiencia o recurso audiovisual real;
-  Historias para agenda/recordatorios; Revisar si no hay base suficiente.
-- No inventes imágenes, testimonios, resultados, cifras, personas ni recursos visuales.
-- Devolvé exactamente una fila por candidato, conservá index y respondé solo JSON.
-
-CANDIDATOS:
-{json.dumps(rows, ensure_ascii=False)}
-""".strip()
-        data, model_status = local_ai_generate_json(
-            prompt, NEWS_AI_SCHEMA, max_predict=2200, timeout_seconds=180
-        )
-        if data is None:
-            status_row["estado"] = f"{model_status}; se aplica selección convencional"
-            return None, status_row
-        output_rows = data.get("items", [])
-        if not isinstance(output_rows, list):
-            status_row["estado"] = "respuesta local inválida; se aplica selección convencional"
-            return None, status_row
-        by_index = {
-            row.get("index"): row
-            for row in output_rows
-            if isinstance(row, dict) and isinstance(row.get("index"), int)
-        }
-
-        for local_index, item in enumerate(batch):
-            row = by_index.get(local_index)
-            if not isinstance(row, dict) or not row.get("relevant"):
-                continue
-            evidence_text = f"{item.title} {item.summary}"
-            if ai_hard_excluded(evidence_text):
-                continue
-            try:
-                score = max(0, min(100, int(row.get("score", 0))))
-            except (TypeError, ValueError):
-                score = 0
-            if score < 40:
-                continue
-            summary = clean_text(str(row.get("summary") or ""), 750)
-            if len(summary) < 35:
-                summary = item.summary
-            category = clean_text(str(row.get("category") or "Lechería"), 80)
-            tags = [
-                clean_text(str(tag), 65)
-                for tag in row.get("tags", [])
-                if clean_text(str(tag), 65)
-            ][:5]
-            if category and category not in tags:
-                tags.insert(0, category)
-            kind = str(row.get("kind") or "news").lower()
-            candidate_date = parse_datetime(row.get("event_date"))
-            existing_date = parse_datetime(item.event_date) if item.event_date else None
-            event_date = candidate_date or existing_date
-            verified_event = bool(
-                kind == "event"
-                and event_date
-                and now.date() <= event_date.date() <= (now + timedelta(days=AI_EVENT_HORIZON_DAYS)).date()
-                and (item.event_date_verified or ai_event_date_visible(event_date, evidence_text))
-            )
-            if verified_event:
-                item.section = "Evento"
-                item.event_date = event_date.strftime("%d/%m/%Y")
-                location = clean_text(str(row.get("location") or ""), 160)
-                organizer = clean_text(str(row.get("organizer") or ""), 160)
-                item.event_location = location if location and normalize(location) in normalize(evidence_text) else ""
-                item.event_organizer = organizer if organizer and normalize(organizer) in normalize(evidence_text) else ""
-                item.event_date_verified = True
-            elif is_within_window(item.published_at, now):
-                item.section = "Noticia"
-                item.event_date = ""
-                item.event_location = ""
-                item.event_organizer = ""
-                item.event_date_verified = False
-            else:
-                continue
-            item.summary = summary
-            item.tags = tags
-            item.relevance = score
-            item.instagram_angle = clean_text(str(row.get("instagram_angle") or ""), 360)
-            proposed_format = str(row.get("format_suggestion") or "Revisar")
-            item.format_suggestion = (
-                proposed_format if proposed_format in {"Carrusel", "Reel", "Placa", "Historias", "Revisar"}
-                else "Revisar"
-            )
-            reviewed.append(item)
-
-    reviewed.extend(leftovers)
-    assign_editorial_metadata(reviewed)
-    status_row["candidatos"] = len(candidates)
-    status_row["resultados"] = len(reviewed)
-    status_row["estado"] = (
-        f"revisión terminada: {len(reviewed)} opciones seleccionadas de {len(items)} hallazgos; "
-        "mismo criterio editorial para todas las procedencias"
-    )
-    return reviewed, status_row
+    """Fallback seguro: preserva resultados de páginas ya filtradas y depura Google News."""
+    kept: list[Item] = []
+    for item in items:
+        text = f"{item.title} {item.summary}"
+        if ai_hard_excluded(text):
+            continue
+        if item.discovered_via_google_news and not is_relevant(text)[0]:
+            continue
+        kept.append(item)
+    assign_editorial_metadata(kept)
+    return kept
 
 
 # ---------------------------------------------------------------------------
@@ -1731,7 +1555,7 @@ def deduplicate(items: list[Item]) -> list[Item]:
 def should_keep_item(item: Item, now: datetime) -> bool:
     if is_within_window(item.published_at, now):
         return True
-    if item.section == "Evento" and ("Google News" in item.source or "IA local" in item.source):
+    if item.section == "Evento" and item.event_date_verified:
         event_dt = parse_datetime(item.event_date)
         return bool(
             event_dt
@@ -1752,16 +1576,22 @@ def render_html(items: list[Item], statuses: list[dict[str, Any]], now: datetime
         "eventos": sum(i.section == "Evento" for i in items),
         "normativa": sum(i.section == "Normativa" for i in items),
     }
-    sections = [("Normativa", "Normativa y Boletín Oficial"), ("Evento", "Agenda y eventos"), ("Noticia", "Noticias del sector")]
+    sections = [("Noticia", "Noticias para evaluar"), ("Evento", "Agenda y actividades"), ("Normativa", "Normativa y Boletín Oficial")]
     cards = []
     for section, heading in sections:
         subset = [i for i in items if i.section == section]
         cards.append(f'<section class="section"><h2>{heading} <span>{len(subset)}</span></h2>')
         if not subset:
-            cards.append('<p class="empty">No se detectaron publicaciones que cumplan el filtro de las últimas 24 horas.</p>')
+            cards.append('<p class="empty">No se detectaron publicaciones que cumplan el filtro de los últimos 7 días.</p>')
         for item in subset:
             tags = " · ".join(item.tags or [])
             pub = item.published_at.strftime("%d/%m/%Y %H:%M")
+            item.editorial_group = editorial_source_group(item)
+            editorial_idea = (
+                f'<div class="editorial"><strong>Enfoque posible para Instagram:</strong> {esc(item.instagram_angle)}'
+                f'<br><strong>Formato orientativo:</strong> {esc(item.format_suggestion or "Revisar")}</div>'
+                if item.instagram_angle else ""
+            )
             event_details = []
             if item.event_date:
                 event_details.append(f"Fecha: {esc(item.event_date)}")
@@ -1773,9 +1603,9 @@ def render_html(items: list[Item], statuses: list[dict[str, Any]], now: datetime
             legal = f'<div class="copy"><h4>Copy institucional sugerido (borrador automático)</h4><pre>{esc(item.legal_copy)}</pre></div>' if item.legal_copy else ""
             cards.append(
                 '<article class="item">'
-                f'<div class="meta"><span>{esc(item.source)}</span><span>{esc(item.date_label)}: {pub}</span></div>'
+                f'<div class="meta"><span>{esc(item.source)}</span><span>{esc(item.editorial_group)}</span><span>{esc(item.date_label)}: {pub}</span></div>'
                 f'<h3><a href="{esc(item.url)}" target="_blank" rel="noopener">{esc(item.title)}</a></h3>'
-                f'<p>{esc(item.summary)}</p>{event}'
+                f'<p>{esc(item.summary)}</p>{editorial_idea}{event}'
                 f'<p class="tags">{esc(tags)}</p>{legal}'
                 '</article>'
             )
@@ -1799,12 +1629,12 @@ h2{{font-size:21px;margin:0 0 14px}}h2 span{{font-size:13px;color:var(--muted);f
 .section{{margin:18px 0}}.item{{padding:17px 0;border-top:1px solid var(--line)}}.item:first-of-type{{border-top:0}}
 .item h3{{font-size:19px;line-height:1.3;margin:8px 0}}a{{color:#135f48;text-decoration:none}}a:hover{{text-decoration:underline}}
 .item p{{margin:7px 0}}.meta{{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:12px}}
-.tags{{color:#64748b;font-size:12px}}.event-date{{color:#854d0e}}.copy{{background:#fffbeb;border:1px solid #f4d58d;border-radius:8px;padding:13px;margin-top:13px}}
+.tags{{color:#64748b;font-size:12px}}.event-date{{color:#854d0e}}.editorial{{border-left:3px solid #8b9e91;padding:8px 12px;margin:10px 0;background:#f7faf8;font-size:14px}}.copy{{background:#fffbeb;border:1px solid #f4d58d;border-radius:8px;padding:13px;margin-top:13px}}
 .copy h4{{margin:0 0 8px;color:#854d0e}}pre{{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.5 Arial,sans-serif;margin:0}}
 .empty{{color:var(--muted);font-size:14px}}.sources{{margin:18px 0}}table{{width:100%;border-collapse:collapse;font-size:13px}}td,th{{padding:9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}}
 footer{{text-align:center;padding:28px;color:var(--muted);font-size:12px}}@media(max-width:620px){{.metrics{{grid-template-columns:repeat(2,1fr)}}header h1{{font-size:24px}}}}
 </style></head><body>
-<header><h1>BOT 384520</h1><p>Noticias, eventos y normativa sobre lechería, ganadería bovina y ganado lechero</p>
+<header><h1>BOT 384520</h1><p>Radar de contenidos para Instagram de INTA Lechero: noticias, investigación, tecnología y agenda de la lechería</p>
 <p>Informe del {day_label} · Ventana: {window_start.strftime('%d/%m/%Y %H:%M')} a {now.strftime('%d/%m/%Y %H:%M')} ({TZ_NAME})</p></header>
 <main>
 <div class="metrics"><div class="metric"><strong>{counts['total']}</strong><span>Publicaciones relevantes</span></div><div class="metric"><strong>{counts['noticias']}</strong><span>Noticias</span></div><div class="metric"><strong>{counts['eventos']}</strong><span>Eventos</span></div><div class="metric"><strong>{counts['normativa']}</strong><span>Normas detectadas</span></div></div>
@@ -1821,8 +1651,13 @@ def write_txt(path: Path, items: list[Item]) -> None:
     for item in items:
         blocks.append(
             f"{item.title.strip()}\n"
-            f"{item.published_at.strftime('%d/%m/%Y')}\n"
-            f"{item.url.strip()}"
+            f"Fuente: {item.source} · {item.editorial_group}\n"
+            f"Publicado: {item.published_at.strftime('%d/%m/%Y')}\n"
+            f"Tipo: {item.section}\n"
+            f"Resumen: {item.summary.strip()}\n"
+            f"Enfoque Instagram: {item.instagram_angle.strip()}\n"
+            f"Formato sugerido: {item.format_suggestion.strip()}\n"
+            f"Enlace: {item.url.strip()}"
         )
     content = "\n\n".join(blocks)
     path.write_text(content + ("\n" if content else ""), encoding="utf-8")
@@ -1929,7 +1764,7 @@ def run() -> tuple[Path, Path, int]:
         LOG.exception("Error en revisión editorial local")
 
     all_items = editorial_candidates + legal_items
-        items = deduplicate([item for item in all_items if should_keep_item(item, now)])
+    items = deduplicate([item for item in all_items if should_keep_item(item, now)])
     # Orden por pertinencia y actualidad, sin favorecer la procedencia de la noticia.
     items.sort(key=lambda x: (-x.relevance, -x.published_at.timestamp()))
 
