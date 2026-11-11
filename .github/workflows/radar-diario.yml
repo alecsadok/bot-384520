@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   generar-informe:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - name: Descargar repositorio
@@ -39,14 +39,43 @@ jobs:
       - name: Ejecutar pruebas de filtros y Boletín Oficial
         run: python -m unittest discover -s tests -v
 
-      - name: Ejecutar BOT 384520 (fuentes + IA opcional)
+      - name: Restaurar caché del modelo Qwen3 local
+        uses: actions/cache@v4
+        with:
+          path: ~/.ollama/models
+          key: ollama-qwen3-1.7b-${{ runner.os }}-v1
+
+      - name: Preparar IA local gratuita (Ollama + Qwen3 1.7B)
+        continue-on-error: true
+        env:
+          OLLAMA_HOST: http://127.0.0.1:11434
+          OLLAMA_MODEL: qwen3:1.7b
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          sudo systemctl stop ollama.service || true
+          mkdir -p "$HOME/.ollama/models"
+          export OLLAMA_MODELS="$HOME/.ollama/models"
+          nohup ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl -fsS "$OLLAMA_HOST/api/tags" >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          if ! curl -fsS "$OLLAMA_HOST/api/tags" >/dev/null; then
+            cat "$RUNNER_TEMP/ollama.log"
+            exit 1
+          fi
+          ollama pull "$OLLAMA_MODEL"
+          ollama list
+
+      - name: Ejecutar BOT 384520 (fuentes + IA local gratuita)
         env:
           TZ: America/Argentina/Cordoba
           RADAR_SCAN_SOCIAL: '1'
-          RADAR_AI_WEB_SEARCH: '1'
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL: gpt-6-astra
-          OPENAI_BULLETIN_MODEL: gpt-6-astra
+          RADAR_LOCAL_AI: '1'
+          OLLAMA_HOST: http://127.0.0.1:11434
+          OLLAMA_MODEL: qwen3:1.7b
           PYTHONUNBUFFERED: '1'
         run: python radar_lechero.py
 
