@@ -52,10 +52,10 @@ jobs:
           RADAR_LOCAL_AI: '1'
           OLLAMA_HOST: http://127.0.0.1:11434
           OLLAMA_MODEL: qwen3:1.7b
-          OLLAMA_MODELS: ${{ runner.temp }}/ollama-models
           PYTHONUNBUFFERED: '1'
         run: |
           set -euo pipefail
+          export OLLAMA_MODELS="$HOME/.ollama/models"
           mkdir -p "$OLLAMA_MODELS"
           OLLAMA_PID=""
 
