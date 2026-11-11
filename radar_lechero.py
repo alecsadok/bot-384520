@@ -1568,6 +1568,18 @@ def deduplicate(items: list[Item]) -> list[Item]:
     return sorted(best.values(), key=lambda x: (x.section != "Normativa", x.section != "Evento", -x.relevance, x.published_at), reverse=False)
 
 
+def sort_items_for_report(items: list[Item]) -> list[Item]:
+    """Ordena secciones y, dentro de cada una, por fecha de publicación descendente."""
+    section_order = {"Noticia": 0, "Evento": 1, "Normativa": 2}
+    return sorted(
+        items,
+        key=lambda item: (
+            section_order.get(item.section, 9),
+            -item.published_at.timestamp(),
+        ),
+    )
+
+
 def should_keep_item(item: Item, now: datetime) -> bool:
     if is_within_window(item.published_at, now):
         return True
@@ -1780,8 +1792,9 @@ def run() -> tuple[Path, Path, int]:
 
     all_items = editorial_candidates + legal_items
     items = deduplicate([item for item in all_items if should_keep_item(item, now)])
-    # Orden por pertinencia y actualidad, sin favorecer la procedencia de la noticia.
-    items.sort(key=lambda x: (-x.relevance, -x.published_at.timestamp()))
+    # Las noticias aparecen de la más reciente a la más antigua.
+    # Eventos y normativa permanecen en sus secciones correspondientes.
+    items = sort_items_for_report(items)
 
     html_content = render_html(items, statuses, now, window_start)
     html_path.write_text(html_content, encoding="utf-8")
