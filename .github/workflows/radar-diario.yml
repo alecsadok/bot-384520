@@ -33,10 +33,16 @@ jobs:
       - name: Instalar dependencias
         run: python -m pip install --upgrade pip && pip install -r requirements.txt
 
-      - name: Ejecutar BOT 384520 (sin IA)
+      - name: Validar sintaxis Python
+        run: python -m py_compile radar_lechero.py
+
+      - name: Ejecutar BOT 384520 (fuentes + IA opcional)
         env:
           TZ: America/Argentina/Cordoba
           RADAR_SCAN_SOCIAL: '1'
+          RADAR_AI_WEB_SEARCH: '1'
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: gpt-6-luna
           PYTHONUNBUFFERED: '1'
         run: python radar_lechero.py
 
