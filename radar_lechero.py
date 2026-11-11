@@ -858,6 +858,8 @@ LOCAL_AI_BATCH_SIZE = 8
 
 def local_ai_is_available() -> tuple[bool, str]:
     """Solo acepta Ollama en loopback: ningún texto se envía a un modelo remoto."""
+    if os.getenv("RADAR_LOCAL_AI", "1").strip().lower() in ("0", "false", "no"):
+        return False, "IA local desactivada por configuración."
     host = urlparse(OLLAMA_HOST)
     if host.hostname not in ("127.0.0.1", "localhost", "::1"):
         return False, "IA local desactivada: OLLAMA_HOST no apunta a localhost."
