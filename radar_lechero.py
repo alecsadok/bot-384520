@@ -764,7 +764,7 @@ OPENAI_DOCS_URL = "https://developers.openai.com/api/docs/guides/tools-web-searc
 AI_DEFAULT_MODEL = "gpt-6-astra"
 AI_MAX_CANDIDATES = 24
 AI_EVENT_HORIZON_DAYS = 90
-MAX_BULLETIN_CANDIDATES = 70
+MAX_BULLETIN_CANDIDATES = 50
 MAX_BULLETIN_AI_DOCS = 24
 
 AI_ITEM_SCHEMA = {
@@ -1278,6 +1278,7 @@ def fetch_bulletin_detail(candidate: dict[str, str], edition_date: datetime | No
         "notice_type": notice_type,
         "body": body,
         "published_at": publication_date,
+        "discovery_score": int(candidate.get("discovery_score") or 0),
     }
 
 
@@ -1428,10 +1429,10 @@ def bulletin_ai_copy(doc: dict[str, Any], analysis: dict[str, Any]) -> str:
     return (
         f"📌 {doc['title']}\n\n"
         f"Publicación oficial: {pub_label} · {doc['url']}\n\n"
-        f"**Impacto para la lechería:** {impact}\n\n"
-        f"**A quiénes puede alcanzar:** {actors}\n\n"
-        f"**Qué conviene verificar:** {what_to_check}\n\n"
-        f"**Fundamento en el texto oficial:** “{evidence}”\n\n"
+        f"Impacto para la lechería: {impact}\n\n"
+        f"A quiénes puede alcanzar: {actors}\n\n"
+        f"Qué conviene verificar: {what_to_check}\n\n"
+        f"Fundamento en el texto oficial: “{evidence}”\n\n"
         "Análisis orientativo elaborado con IA a partir del texto oficial. "
         "Verificar el articulado completo, anexos, sujetos alcanzados y vigencia "
         "antes de tomar decisiones o comunicar obligaciones o beneficios."
@@ -1471,7 +1472,13 @@ def scrape_bulletin(now: datetime) -> tuple[list[Item], dict[str, Any]]:
                 except Exception as exc:
                     LOG.debug("Ficha del Boletín Oficial: %s", exc)
 
-    documents.sort(key=lambda doc: (doc["published_at"] or datetime.min.replace(tzinfo=TZ), doc["title"]))
+    documents.sort(
+        key=lambda doc: (
+            -int(doc.get("discovery_score") or 0),
+            -(doc["published_at"].timestamp() if doc["published_at"] else 0),
+            doc["title"],
+        )
+    )
     documents = [
         doc for doc in documents
         if doc["published_at"] is not None and is_within_window(doc["published_at"], now)
