@@ -50,23 +50,21 @@ MAX_GOOGLE_NEWS_ITEMS = 12
 MAX_GOOGLE_NEWS_TOTAL = 90
 NEWS_WINDOW_DAYS = 7
 MAX_GOOGLE_NEWS_ENRICHMENTS = 36
+MAX_EDITORIAL_AI_ITEMS = 48
 
-# Fuentes directas: INTA tiene prioridad; se complementa con organismos,
-# universidades, observatorios y medios sectoriales. Los resultados siempre
-# deben superar el filtro temático y la revisión editorial.
+# Directorio acumulativo: conserva todas las páginas aportadas por el usuario
+# y agrega canales oficiales/regionales del INTA. La procedencia se informa,
+# pero no suma puntos ni desplaza noticias de medios.
 WEB_SOURCES: list[dict[str, str]] = [
+    {"name": "Argentina.gob.ar – Noticias", "url": "https://www.argentina.gob.ar/noticias", "kind": "institucional"},
     {"name": "INTA – Noticias nacionales", "url": "https://www.argentina.gob.ar/inta/noticias", "kind": "inta"},
+    {"name": "INTA Informa – Noticias", "url": "https://intainforma.inta.gob.ar/noticias/", "kind": "inta"},
     {"name": "INTA – Centro Regional Santa Fe", "url": "https://www.argentina.gob.ar/inta/cr-santa-fe/noticias", "kind": "inta"},
     {"name": "INTA – Centro Regional Entre Ríos", "url": "https://www.argentina.gob.ar/inta/cr-entre-rios/noticias", "kind": "inta"},
     {"name": "INTA – Centro Regional Córdoba", "url": "https://www.argentina.gob.ar/inta/cr-cordoba/noticias", "kind": "inta"},
     {"name": "INTA – Centro Regional Corrientes", "url": "https://www.argentina.gob.ar/inta/cr-corrientes/noticias", "kind": "inta"},
     {"name": "INTA – Centro Regional Misiones", "url": "https://www.argentina.gob.ar/inta/cr-misiones/noticias", "kind": "inta"},
     {"name": "SENASA", "url": "https://www.argentina.gob.ar/senasa", "kind": "institucional"},
-    {"name": "Secretaría de Agricultura", "url": "https://www.argentina.gob.ar/economia/agricultura", "kind": "institucional"},
-    {"name": "CONICET – Prensa", "url": "https://www.conicet.gov.ar/prensa/", "kind": "academica"},
-    {"name": "UNL – Noticias", "url": "https://www.unl.edu.ar/noticias/", "kind": "academica"},
-    {"name": "FCV UNL – Eventos", "url": "https://www.fcv.unl.edu.ar/eventos/", "kind": "academica"},
-    {"name": "OCLA", "url": "https://www.ocla.org.ar/", "kind": "organizacion_sectorial"},
     {"name": "Todo Lechería", "url": "https://www.todolecheria.com.ar/noticias/", "kind": "especializada"},
     {"name": "Agrofy – Lechería", "url": "https://news.agrofy.com.ar/lecheria", "kind": "especializada"},
     {"name": "Agrofy News", "url": "https://news.agrofy.com.ar/", "kind": "agro"},
@@ -78,24 +76,42 @@ WEB_SOURCES: list[dict[str, str]] = [
     {"name": "Agritotal", "url": "https://www.agritotal.com/", "kind": "agro"},
     {"name": "Infobae – Revista Chacra", "url": "https://www.infobae.com/revista-chacra/", "kind": "agro"},
     {"name": "La Nación – Campo", "url": "https://www.lanacion.com.ar/economia/campo/", "kind": "agro"},
+    {"name": "UNL – Noticias", "url": "https://www.unl.edu.ar/noticias/", "kind": "academica"},
     {"name": "Infocampo", "url": "https://www.infocampo.com.ar/", "kind": "agro"},
     {"name": "Agroempresario", "url": "https://agroempresario.com/", "kind": "agro"},
     {"name": "Portal Lechero", "url": "https://portalechero.com/", "kind": "especializada"},
+    {"name": "OCLA", "url": "https://www.ocla.org.ar/", "kind": "especializada"},
+    {"name": "FCV UNL – Eventos", "url": "https://www.fcv.unl.edu.ar/eventos/", "kind": "eventos"},
     {"name": "Colegio de Médicos Veterinarios de Santa Fe", "url": "https://cmver.com.ar/", "kind": "profesional"},
     {"name": "Mundo Rural", "url": "https://mundorural.com.ar/", "kind": "agro"},
     {"name": "InfoLáctea", "url": "https://www.infolactea.com.ar/", "kind": "especializada"},
+    {"name": "Secretaría de Agricultura", "url": "https://www.argentina.gob.ar/economia/agricultura", "kind": "institucional"},
     {"name": "INDEC", "url": "https://www.indec.gob.ar/", "kind": "estadistica"},
     {"name": "Bolsa de Comercio de Rosario", "url": "https://www.bcr.com.ar/es/mercados/investigacion-y-desarrollo/informativo-semanal", "kind": "economia"},
+    {"name": "CONICET – Prensa", "url": "https://www.conicet.gov.ar/prensa/", "kind": "academica"},
 ]
 
 # El Boletín Oficial se procesa por separado para leer la Primera Sección.
 BOLETIN_URL = "https://www.boletinoficial.gob.ar/seccion/primera"
 BOLETIN_HOME = "https://www.boletinoficial.gob.ar/"
 
-# La lectura automatizada de Instagram/X no es una fuente estable ni completa.
-# Se deja vacía por defecto; solo se activa si se agregan perfiles y el contenido
-# público puede verificarse sin iniciar sesión ni eludir controles.
-SOCIAL_PROFILES: list[str] = []
+# Los perfiles públicos se almacenan en un archivo de configuración separado.
+SOCIAL_PROFILES_FILE = BASE_DIR / "config" / "perfiles_sociales.txt"
+SOCIAL_SCAN_BATCH_SIZE = 16
+
+def load_social_profiles() -> list[str]:
+    if not SOCIAL_PROFILES_FILE.exists():
+        return []
+    allowed = ("https://www.instagram.com/", "https://instagram.com/", "https://x.com/")
+    return list(dict.fromkeys(
+        line.strip()
+        for line in SOCIAL_PROFILES_FILE.read_text(encoding="utf-8").splitlines()
+        if line.strip().startswith(allowed)
+    ))
+
+SOCIAL_PROFILES = load_social_profiles()
+
+GOOGLE_SEARCH_REFERENCE_URL = "https://www.google.com/search?q=%22INTA+LECHERO%22+OR+%22INTA%22+OR+%22Bovinos%22+OR+%22Vacas%22+OR+%22Inta%22+OR+%22Leucosis%22+OR+%22Campo+argentino%22+OR+%22Agro%22+OR+%22Inta+rafaela%22+OR+%22Agropecuara%22+OR+%22Buenas+pr%C3%A1cticas+agrarias%22+OR+%22Lecher%C3%ADa%22+OR+%22Tambo%22+OR+%22Veterinaria%22+OR+%22Veterinario%22+OR+%22Rural%22+OR+%22Agronegocio%22+OR+%22Gado%22&lr=&sca_esv=578178501&biw=1920&bih=931&tbm=nws&sxsrf=AM9HkKlSgU6ogBPVtLBH6VKN2YhMUWTwXw%3A1698765535558&ei=3xpBZfnMIZzf1sQPmseOqAc&ved=0ahUKEwi5uLbiyqCCAxWcr5UCHZqjA3U4ChDh1QMIDg&uact=5&oq=%22INTA+LECHERO%22+OR+%22INTA%22+OR+%22Bovinos%22+OR+%22Vacas%22+OR+%22Inta%22+OR+%22Leucosis%22+OR+%22Campo+argentino%22+OR+%22Agro%22+OR+%22Inta+rafaela%22+OR+%22Agropecuara%22+OR+%22Buenas+pr%C3%A1cticas+agrarias%22+OR+%22Lecher%C3%ADa%22+OR+%22Tambo%22+OR+%22Veterinaria%22+OR+%22Veterinario%22+OR+%22Rural%22+OR+%22Agronegocio%22+OR+%22Gado%22&gs_lp=Egxnd3Mtd2l6LW5ld3MijAIiSU5UQSBMRUNIRVJPIiBPUiAiSU5UQSIgT1IgIkJvdmlub3MiIE9SICJWYWNhcyIgT1IgIkludGEiIE9SICJMZXVjb3NpcyIgT1IgIkNhbXBvIGFyZ2VudGlubyIgT1IgIkFncm8iIE9SICJJbnRhIHJhZmFlbGEiIE9SICJBZ3JvcGVjdWFyYSIgT1IgIkJ1ZW5hcyBwcsOhY3RpY2FzIGFncmFyaWFzIiBPUiAiTGVjaGVyw61hIiBPUiAiVGFtYm8iIE9SICJWZXRlcmluYXJpYSIgT1IgIlZldGVyaW5hcmlvIiBPUiAiUnVyYWwiIE9SICJBZ3JvbmVnb2NpbyIgT1IgIkdhZG8iSABQAFgAcAB4AJABAJgBAKABAKoBALgBA8gBAPgBAQ&sclient=gws-wiz-news"
 
 # ---------------------------------------------------------------------------
 # Diccionario temático. Se puede ampliar en keywords_extra.txt sin tocar código.
@@ -603,15 +619,19 @@ def parse_feed(feed_url: str, source_name: str, now: datetime) -> list[Item]:
         if not relevant or not is_within_window(pub, now):
             continue
         is_event = any(normalize(w) in normalize(text) for w in EVENT_WORDS)
+        event_date = guess_event_date(text, now) if is_event else ""
+        event_dt = parse_datetime(event_date) if event_date else None
+        verified_event = bool(event_dt and ai_event_date_visible(event_dt, text))
         output.append(Item(
             title=title,
             url=link,
             source=source_name,
             published_at=pub,
             summary=summary or summarize(text),
-            section="Evento" if is_event else "Noticia",
+            section="Evento" if verified_event else "Noticia",
             tags=tags,
-            event_date=guess_event_date(text, now),
+            event_date=event_date if verified_event else "",
+            event_date_verified=verified_event,
             relevance=score,
         ))
     return output
@@ -715,7 +735,7 @@ def parse_article(
         source=source_name,
         published_at=published,
         summary=summarize(description or body_text or context_hint, 650),
-        section="Evento" if is_event else "Noticia",
+        section="Evento" if upcoming_event else "Noticia",
         tags=tags,
         event_date=event_date if upcoming_event else "",
         event_date_verified=upcoming_event,
@@ -776,6 +796,7 @@ def google_news_queries() -> list[tuple[str, str]]:
         ('(robotización OR automatización OR ordeño robotizado OR tecnología para tambos OR maquinaria lechera) Argentina when:7d', "news"),
         ('site:conicet.gov.ar (leche OR lechería OR bovinos OR mastitis OR reproducción animal OR forrajes) Argentina when:7d', "news"),
         ('site:unl.edu.ar (leche OR lechería OR bovinos OR mastitis OR tambo OR forrajes) when:7d', "news"),
+        ('("INTA LECHERO" OR INTA OR bovinos OR vacas OR leucosis OR "campo argentino" OR agro OR "INTA Rafaela" OR "buenas prácticas agrarias" OR lechería OR tambo OR veterinaria OR rural OR agronegocio OR Gado) Argentina when:7d', "news"),
         ('(jornada OR jornadas OR curso OR capacitación OR seminario OR congreso OR "día de campo" OR webinar) (lechería OR tambo OR "vacas lecheras") Argentina when:30d', "event"),
         ('(encuentro OR taller OR charla OR exposición OR feria OR actualización técnica) (producción de leche OR ganado lechero OR tambos) Argentina when:30d', "event"),
         ('(jornada OR curso OR seminario OR capacitación OR congreso) (lechería OR tambo OR bovinos) (Santa Fe OR Córdoba OR Entre Ríos OR Buenos Aires OR La Pampa) when:30d', "event"),
@@ -916,7 +937,8 @@ def scan_google_news(now: datetime) -> tuple[list[Item], dict[str, Any]]:
 
     return results, {
         "fuente": "Google News RSS (búsqueda gratuita)",
-        "url": "https://news.google.com/",
+        "url": GOOGLE_SEARCH_REFERENCE_URL,
+        "rss": "https://news.google.com/",
         "estado": "consultada",
         "candidatos_eventos": event_candidates,
         "resultados": len(results),
@@ -1048,13 +1070,15 @@ NEWS_AI_SCHEMA = {
                     "tags": {"type": "array", "items": {"type": "string"}},
                     "score": {"type": "integer"},
                     "summary": {"type": "string"},
+                    "instagram_angle": {"type": "string"},
+                    "format_suggestion": {"type": "string", "enum": ["Carrusel", "Reel", "Placa", "Historias", "Revisar"]},
                     "event_date": {"type": "string"},
                     "location": {"type": "string"},
                     "organizer": {"type": "string"},
                 },
                 "required": [
                     "index", "relevant", "kind", "category", "tags", "score",
-                    "summary", "event_date", "location", "organizer",
+                    "summary", "instagram_angle", "format_suggestion", "event_date", "location", "organizer",
                 ],
                 "additionalProperties": False,
             },
@@ -1063,6 +1087,35 @@ NEWS_AI_SCHEMA = {
     "required": ["items"],
     "additionalProperties": False,
 }
+
+
+def editorial_source_group(item: Item) -> str:
+    """Etiqueta la procedencia para contextualizarla, sin asignar puntos por origen."""
+    host = (urlparse(item.url).hostname or "").lower()
+    path = normalize(urlparse(item.url).path)
+    if ("argentina.gob.ar" in host and "/inta/" in path) or "intainforma.inta.gob.ar" in host:
+        return "INTA"
+    if "senasa" in host:
+        return "Organismo público"
+    if "conicet" in host or "unl.edu.ar" in host:
+        return "Universidad e investigación"
+    if "ocla" in host:
+        return "Organización sectorial"
+    if "boletinoficial" in host:
+        return "Normativa oficial"
+    if "instagram.com" in host:
+        return "Red social institucional/sectorial"
+    if "x.com" in host:
+        return "Red social"
+    specialized = ("todolecheria", "agrofy", "portalechero", "infolactea", "agrolink", "agroverdad", "agritotal", "infocampo")
+    if any(term in host for term in specialized):
+        return "Medio especializado"
+    return "Medio y otras fuentes"
+
+
+def assign_editorial_metadata(items: list[Item]) -> None:
+    for item in items:
+        item.editorial_group = editorial_source_group(item)
 
 
 def filter_google_news_fallback(items: list[Item]) -> list[Item]:
@@ -1074,10 +1127,10 @@ def filter_google_news_fallback(items: list[Item]) -> list[Item]:
     ]
 
 
-def review_google_news_with_local_ai(items: list[Item], now: datetime) -> tuple[list[Item] | None, dict[str, Any]]:
-    """Filtra y resume con el modelo local los candidatos de las búsquedas RSS gratuitas."""
+def review_editorial_candidates_with_local_ai(items: list[Item], now: datetime) -> tuple[list[Item] | None, dict[str, Any]]:
+    """Evalúa noticias de todas las procedencias con un criterio editorial común."""
     status_row = {
-        "fuente": f"IA local · {OLLAMA_MODEL}",
+        "fuente": f"Revisión editorial local · {OLLAMA_MODEL}",
         "url": OLLAMA_MODEL_LIBRARY_URL,
         "estado": "pendiente",
         "resultados": 0,
@@ -1085,18 +1138,27 @@ def review_google_news_with_local_ai(items: list[Item], now: datetime) -> tuple[
     if not items:
         status_row["estado"] = "sin candidatos para analizar"
         return [], status_row
+    assign_editorial_metadata(items)
     available, reason = local_ai_is_available()
     if not available:
-        status_row["estado"] = f"{reason}; se conservan los resultados convencionales"
+        status_row["estado"] = f"{reason}; se conserva la selección temática convencional"
         return None, status_row
 
-    reviewed: list[Item] = []
-    candidates = items[:MAX_GOOGLE_NEWS_AI_ITEMS]
+    # Pertinencia y actualidad ordenan la revisión. La clase de fuente no suma
+    # ni resta puntos, por lo que prensa e instituciones compiten en igualdad.
+    candidates = sorted(
+        items,
+        key=lambda item: (item.relevance, item.published_at.timestamp()),
+        reverse=True,
+    )[:MAX_EDITORIAL_AI_ITEMS]
+    candidate_ids = {id(item) for item in candidates}
     leftovers = [
-        item for item in items[MAX_GOOGLE_NEWS_AI_ITEMS:]
-        if is_relevant(f"{item.title} {item.summary}")[0]
+        item for item in items
+        if id(item) not in candidate_ids
         and not ai_hard_excluded(f"{item.title} {item.summary}")
+        and (not item.discovered_via_google_news or is_relevant(f"{item.title} {item.summary}")[0])
     ]
+    reviewed: list[Item] = []
 
     for batch_start in range(0, len(candidates), LOCAL_AI_BATCH_SIZE):
         batch = candidates[batch_start:batch_start + LOCAL_AI_BATCH_SIZE]
@@ -1106,57 +1168,74 @@ def review_google_news_with_local_ai(items: list[Item], now: datetime) -> tuple[
                 "index": local_index,
                 "title": item.title,
                 "source": item.source,
+                "source_group": item.editorial_group,
                 "published_at": item.published_at.strftime("%d/%m/%Y %H:%M"),
                 "url": item.url,
                 "preliminary_section": item.section,
                 "preliminary_event_date": item.event_date,
-                "text_from_feed_or_article": item.summary[:1000],
+                "event_date_verified": item.event_date_verified,
+                "text_from_source": item.summary[:1100],
             })
         prompt = f"""
-Fecha de hoy en Argentina: {now.strftime("%d/%m/%Y")} ({TZ_NAME}).
+Fecha actual en Argentina: {now.strftime("%d/%m/%Y")} ({TZ_NAME}).
 
-Evaluá estos candidatos recuperados mediante búsquedas RSS gratuitas de Google News.
-Seleccioná solo publicaciones argentinas realmente vinculadas con tambos, producción
-y precio de la leche, industria láctea, vacas lecheras, vaquillonas, terneros de tambo,
-reproducción, genética, sanidad, bienestar, alimentación, forrajes y tecnología lechera.
-También seleccioná jornadas, cursos, congresos, capacitaciones, días de campo y
-encuentros técnicos sobre esos temas.
+Actuá como editor de contenidos para Instagram de INTA Lechero. Los candidatos
+provienen de fuentes institucionales, científicas, sectoriales y periodísticas.
+Una noticia periodística puede ser tan valiosa como una institucional: NO puntúes
+mejor una publicación solo por ser del INTA ni descartes una noticia por provenir
+de un medio. Evaluá el contenido y su utilidad para productores, profesionales,
+técnicos y personas vinculadas con la lechería. La procedencia identifica la fuente,
+pero no reemplaza la evaluación editorial.
 
-Excluí carne, faena, feedlots, novillos, cultivos o mercados de granos sin vínculo
-expreso con alimentación animal, y meteorología general.
+Buscá noticias y materiales sobre tambos, producción de leche, industria láctea,
+vacas lecheras, crianza y recría, reproducción, genética, sanidad, bienestar,
+nutrición, forrajes, pasturas, reservas, tecnología, economía, políticas sectoriales,
+investigación aplicada y capacitación; también jornadas, cursos y congresos.
+
+Excluí contenido centrado exclusivamente en carne, faena, feedlots, novillos,
+agricultura o mercados de granos sin relación expresa con alimentación animal.
+No incluyas pronósticos ni noticias meteorológicas generales. Los temas climáticos
+solo sirven cuando la fuente explica consecuencias concretas para tambos, rodeos,
+pasturas o reservas forrajeras.
 
 Reglas:
-- El texto de cada candidato es la única evidencia disponible. No completes datos ausentes.
-- No confundas la fecha de publicación con la fecha del evento.
-- "news" requiere publicación dentro de las últimas 24 horas.
-- "event" requiere una fecha futura entre hoy y los próximos {AI_EVENT_HORIZON_DAYS} días.
-- Para un evento, event_date debe aparecer claramente en el texto; si no, no lo clasifiques como evento.
-- Localidad y organizador solo se completan si aparecen en el texto.
-- No alcanza una mención incidental a "ganado", "campo" o "agro".
-- Si no es relevante, relevant=false y score=0.
-- Asigná score de 40 a 100 según relevancia. No inventes hechos.
-- Devolvé exactamente una fila por candidato y respetá su index.
-- Respondé únicamente con JSON.
+- El título y el texto provistos son la única evidencia. No completes datos ausentes.
+- "news" requiere publicación dentro de los últimos {NEWS_WINDOW_DAYS} días.
+- "event" solo si hay actividad futura verificable dentro de {AI_EVENT_HORIZON_DAYS} días.
+- No confundas la fecha de publicación y la fecha del evento.
+- Si event_date_verified es false, la fecha futura debe aparecer inequívocamente en el texto.
+- Lugar y organizador solo se completan cuando aparecen expresamente.
+- relevant=false si la relación con lechería es incidental, marginal o insuficiente.
+- score (40 a 100) pondera pertinencia, utilidad, novedad, actualidad y calidad de evidencia.
+  NO uses el tipo de fuente como ventaja automática.
+- summary: síntesis fiel del contenido disponible, sin agregar datos.
+- instagram_angle: propuesta breve de enfoque para un post, no redactes un copy.
+  Debe poder desarrollarse con el texto recuperado. Si no alcanza, dejalo vacío.
+- format_suggestion: Carrusel para varios datos/pasos; Placa para un dato puntual;
+  Reel solo si se describe una demostración/experiencia o recurso audiovisual real;
+  Historias para agenda/recordatorios; Revisar si no hay base suficiente.
+- No inventes imágenes, testimonios, resultados, cifras, personas ni recursos visuales.
+- Devolvé exactamente una fila por candidato, conservá index y respondé solo JSON.
 
 CANDIDATOS:
 {json.dumps(rows, ensure_ascii=False)}
 """.strip()
         data, model_status = local_ai_generate_json(
-            prompt, NEWS_AI_SCHEMA, max_predict=1800, timeout_seconds=180
+            prompt, NEWS_AI_SCHEMA, max_predict=2200, timeout_seconds=180
         )
         if data is None:
-            status_row["estado"] = f"{model_status}; se conservan los resultados convencionales"
+            status_row["estado"] = f"{model_status}; se aplica selección convencional"
             return None, status_row
         output_rows = data.get("items", [])
         if not isinstance(output_rows, list):
-            status_row["estado"] = "respuesta local inválida; se conservan los resultados convencionales"
+            status_row["estado"] = "respuesta local inválida; se aplica selección convencional"
             return None, status_row
-
         by_index = {
             row.get("index"): row
             for row in output_rows
             if isinstance(row, dict) and isinstance(row.get("index"), int)
         }
+
         for local_index, item in enumerate(batch):
             row = by_index.get(local_index)
             if not isinstance(row, dict) or not row.get("relevant"):
@@ -1170,7 +1249,7 @@ CANDIDATOS:
                 score = 0
             if score < 40:
                 continue
-            summary = clean_text(str(row.get("summary") or ""), 650)
+            summary = clean_text(str(row.get("summary") or ""), 750)
             if len(summary) < 35:
                 summary = item.summary
             category = clean_text(str(row.get("category") or "Lechería"), 80)
@@ -1181,7 +1260,6 @@ CANDIDATOS:
             ][:5]
             if category and category not in tags:
                 tags.insert(0, category)
-
             kind = str(row.get("kind") or "news").lower()
             candidate_date = parse_datetime(row.get("event_date"))
             existing_date = parse_datetime(item.event_date) if item.event_date else None
@@ -1190,10 +1268,7 @@ CANDIDATOS:
                 kind == "event"
                 and event_date
                 and now.date() <= event_date.date() <= (now + timedelta(days=AI_EVENT_HORIZON_DAYS)).date()
-                and (
-                    item.event_date_verified
-                    or ai_event_date_visible(event_date, evidence_text)
-                )
+                and (item.event_date_verified or ai_event_date_visible(event_date, evidence_text))
             )
             if verified_event:
                 item.section = "Evento"
@@ -1202,23 +1277,34 @@ CANDIDATOS:
                 organizer = clean_text(str(row.get("organizer") or ""), 160)
                 item.event_location = location if location and normalize(location) in normalize(evidence_text) else ""
                 item.event_organizer = organizer if organizer and normalize(organizer) in normalize(evidence_text) else ""
+                item.event_date_verified = True
             elif is_within_window(item.published_at, now):
                 item.section = "Noticia"
                 item.event_date = ""
                 item.event_location = ""
                 item.event_organizer = ""
+                item.event_date_verified = False
             else:
                 continue
-            item.source = f"{item.source} · IA local"
             item.summary = summary
             item.tags = tags
             item.relevance = score
+            item.instagram_angle = clean_text(str(row.get("instagram_angle") or ""), 360)
+            proposed_format = str(row.get("format_suggestion") or "Revisar")
+            item.format_suggestion = (
+                proposed_format if proposed_format in {"Carrusel", "Reel", "Placa", "Historias", "Revisar"}
+                else "Revisar"
+            )
             reviewed.append(item)
 
     reviewed.extend(leftovers)
+    assign_editorial_metadata(reviewed)
     status_row["candidatos"] = len(candidates)
     status_row["resultados"] = len(reviewed)
-    status_row["estado"] = f"análisis local terminado: {len(reviewed)} resultados conservados de {len(items)} candidatos"
+    status_row["estado"] = (
+        f"revisión terminada: {len(reviewed)} opciones seleccionadas de {len(items)} hallazgos; "
+        "mismo criterio editorial para todas las procedencias"
+    )
     return reviewed, status_row
 
 
@@ -1747,7 +1833,7 @@ def write_txt(path: Path, items: list[Item]) -> None:
 def run() -> tuple[Path, Path, int]:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(message)s")
     now = datetime.now(TZ)
-    window_start = now - timedelta(hours=24)
+    window_start = now - timedelta(days=NEWS_WINDOW_DAYS)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     suffix = now.strftime("%d%m%y")
     html_path = OUTPUT_DIR / f"bot384520_{suffix}.html"
@@ -1782,29 +1868,8 @@ def run() -> tuple[Path, Path, int]:
     except Exception as exc:
         statuses.append({"fuente": "Google News RSS", "url": "https://news.google.com/", "estado": f"error: {exc}"})
 
-    # IA local revisa candidatos de Google News sin salir del runner.
-    try:
-        reviewed_google_items, ai_status = review_google_news_with_local_ai(google_items, now)
-        if reviewed_google_items is not None:
-            google_items = reviewed_google_items
-        else:
-            # Si el modelo local no está disponible, vuelve al filtro determinístico
-            # para no volcar todos los resultados del RSS sin clasificación.
-            google_items = filter_google_news_fallback(google_items)
-            ai_status["fallback_resultados"] = len(google_items)
-        all_items.extend(google_items)
-        statuses.append(ai_status)
-        LOG.info("IA local: %s candidatos finales", len(google_items))
-    except Exception as exc:
-        statuses.append({
-            "fuente": f"IA local · {OLLAMA_MODEL}",
-            "url": OLLAMA_MODEL_LIBRARY_URL,
-            "estado": f"error local: {clean_text(str(exc), 260)}",
-            "resultados": 0,
-        })
-        google_items = filter_google_news_fallback(google_items)
-        all_items.extend(google_items)
-        LOG.exception("Error en análisis local")
+    # Google News se suma al conjunto de candidatos institucionales y periodísticos.
+    all_items.extend(google_items)
 
     # Legislación de la Primera Sección del Boletín Oficial.
     try:
@@ -1816,11 +1881,15 @@ def run() -> tuple[Path, Path, int]:
         statuses.append({"fuente": "Boletín Oficial – Primera Sección", "url": BOLETIN_URL, "estado": f"error: {exc}"})
         LOG.exception("Error leyendo Boletín Oficial")
 
-    # Consulta de perfiles públicos: no se autentica ni se fuerza el acceso a contenido restringido.
+    # Consulta rotativa de perfiles públicos; no se inicia sesión ni se eluden bloqueos.
     social_statuses: list[dict[str, Any]] = []
-    if os.getenv("RADAR_SCAN_SOCIAL", "1").lower() not in ("0", "false", "no"):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            futures = {executor.submit(scan_social_profile, url, now): url for url in SOCIAL_PROFILES}
+    batch_count = (len(SOCIAL_PROFILES) + SOCIAL_SCAN_BATCH_SIZE - 1) // SOCIAL_SCAN_BATCH_SIZE if SOCIAL_PROFILES else 0
+    batch_index = now.date().toordinal() % batch_count if batch_count else 0
+    start_profile = batch_index * SOCIAL_SCAN_BATCH_SIZE
+    profiles_today = SOCIAL_PROFILES[start_profile:start_profile + SOCIAL_SCAN_BATCH_SIZE]
+    if os.getenv("RADAR_SCAN_SOCIAL", "1").lower() not in ("0", "false", "no") and profiles_today:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            futures = {executor.submit(scan_social_profile, url, now): url for url in profiles_today}
             for future in concurrent.futures.as_completed(futures):
                 try:
                     social_items, row = future.result()
@@ -1830,11 +1899,39 @@ def run() -> tuple[Path, Path, int]:
                 except Exception as exc:
                     social_statuses.append({"fuente": futures[future], "url": futures[future], "estado": f"error: {exc}", "social": True})
         statuses.extend(social_statuses)
+        statuses.append({
+            "fuente": "Rotación de perfiles sociales públicos",
+            "url": SOCIAL_PROFILES_FILE.as_posix(),
+            "estado": f"{len(profiles_today)} de {len(SOCIAL_PROFILES)} perfiles revisados; cobertura rotativa aproximada de {batch_count} días",
+            "resultados": sum(int(row.get("resultados", 0) or 0) for row in social_statuses),
+        })
 
-    items = deduplicate([item for item in all_items if should_keep_item(item, now)])
-    # Orden explícito: normas, eventos y después noticias; dentro de cada bloque, más recientes primero.
-    priority = {"Normativa": 0, "Evento": 1, "Noticia": 2}
-    items.sort(key=lambda x: (priority.get(x.section, 9), -x.relevance, -x.published_at.timestamp()))
+    # La normativa mantiene su análisis específico; las demás fuentes se evalúan
+    # juntas para que prensa e instituciones compitan bajo el mismo criterio.
+    legal_items = [item for item in all_items if item.section == "Normativa"]
+    editorial_candidates = [item for item in all_items if item.section != "Normativa"]
+    try:
+        reviewed, editorial_status = review_editorial_candidates_with_local_ai(editorial_candidates, now)
+        if reviewed is None:
+            editorial_candidates = filter_google_news_fallback(editorial_candidates)
+            editorial_status["fallback_resultados"] = len(editorial_candidates)
+        else:
+            editorial_candidates = reviewed
+        statuses.append(editorial_status)
+    except Exception as exc:
+        editorial_candidates = filter_google_news_fallback(editorial_candidates)
+        statuses.append({
+            "fuente": f"Revisión editorial local · {OLLAMA_MODEL}",
+            "url": OLLAMA_MODEL_LIBRARY_URL,
+            "estado": f"error; se aplica selección convencional: {clean_text(str(exc), 240)}",
+            "resultados": len(editorial_candidates),
+        })
+        LOG.exception("Error en revisión editorial local")
+
+    all_items = editorial_candidates + legal_items
+        items = deduplicate([item for item in all_items if should_keep_item(item, now)])
+    # Orden por pertinencia y actualidad, sin favorecer la procedencia de la noticia.
+    items.sort(key=lambda x: (-x.relevance, -x.published_at.timestamp()))
 
     html_content = render_html(items, statuses, now, window_start)
     html_path.write_text(html_content, encoding="utf-8")
