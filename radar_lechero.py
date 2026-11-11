@@ -655,6 +655,8 @@ def parse_article(
     article_node = soup.find("article") or soup.find("main") or soup.body or soup
     body_text = clean_text(article_node.get_text(" ", strip=True), 12000)
     text = f"{title} {description} {context_hint} {body_text}"
+    if ai_hard_excluded(text):
+        return None
     relevant, tags, score = is_relevant(text)
 
     event_text = f"{title} {description} {context_hint} {body_text[:7000]}"
@@ -1085,7 +1087,11 @@ def review_google_news_with_local_ai(items: list[Item], now: datetime) -> tuple[
 
     reviewed: list[Item] = []
     candidates = items[:MAX_GOOGLE_NEWS_AI_ITEMS]
-    leftovers = items[MAX_GOOGLE_NEWS_AI_ITEMS:]
+    leftovers = [
+        item for item in items[MAX_GOOGLE_NEWS_AI_ITEMS:]
+        if is_relevant(f"{item.title} {item.summary}")[0]
+        and not ai_hard_excluded(f"{item.title} {item.summary}")
+    ]
 
     for batch_start in range(0, len(candidates), LOCAL_AI_BATCH_SIZE):
         batch = candidates[batch_start:batch_start + LOCAL_AI_BATCH_SIZE]
