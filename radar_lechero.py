@@ -1069,6 +1069,15 @@ NEWS_AI_SCHEMA = {
 }
 
 
+def filter_google_news_fallback(items: list[Item]) -> list[Item]:
+    """Fallback determinístico: preserva somente itens tematicamente relevantes."""
+    return [
+        item for item in items
+        if is_relevant(f"{item.title} {item.summary}")[0]
+        and not ai_hard_excluded(f"{item.title} {item.summary}")
+    ]
+
+
 def review_google_news_with_local_ai(items: list[Item], now: datetime) -> tuple[list[Item] | None, dict[str, Any]]:
     """Filtra y resume con el modelo local los candidatos de las búsquedas RSS gratuitas."""
     status_row = {
@@ -1769,11 +1778,11 @@ def run() -> tuple[Path, Path, int]:
                 LOG.exception("Error en fuente %s", source["name"])
 
     # Google News RSS añade descubrimiento transversal, independiente de la lista de sitios.
+    google_items: list[Item] = []
     try:
         google_items, google_status = scan_google_news(now)
-        all_items.extend(google_items)
         statuses.append(google_status)
-        LOG.info("Google News: %s resultados", len(google_items))
+        LOG.info("Google News: %s candidatos", len(google_items))
     except Exception as exc:
         statuses.append({"fuente": "Google News RSS", "url": "https://news.google.com/", "estado": f"error: {exc}"})
 
@@ -1785,11 +1794,7 @@ def run() -> tuple[Path, Path, int]:
         else:
             # Si el modelo local no está disponible, vuelve al filtro determinístico
             # para no volcar todos los resultados del RSS sin clasificación.
-            google_items = [
-                item for item in google_items
-                if is_relevant(f"{item.title} {item.summary}")[0]
-                and not ai_hard_excluded(f"{item.title} {item.summary}")
-            ]
+            google_items = filter_google_news_fallback(google_items)
             ai_status["fallback_resultados"] = len(google_items)
         all_items.extend(google_items)
         statuses.append(ai_status)
@@ -1801,6 +1806,7 @@ def run() -> tuple[Path, Path, int]:
             "estado": f"error local: {clean_text(str(exc), 260)}",
             "resultados": 0,
         })
+        google_items = filter_google_news_fallback(google_items)
         all_items.extend(google_items)
         LOG.exception("Error en análisis local")
 
