@@ -34,6 +34,20 @@ class EditorialFilterTests(unittest.TestCase):
         self.assertFalse(radar.contains_term("consenso de productores tamberos", "enso"))
         self.assertTrue(radar.contains_term("alerta por ENSO", "enso"))
 
+    def test_ai_hard_exclusion_blocks_meat_focus(self):
+        text = "Resolución sobre faena bovina, exportaciones de carne y feedlots."
+        self.assertTrue(radar.ai_hard_excluded(text))
+
+    def test_ai_hard_exclusion_blocks_grain_only(self):
+        text = "Disposición sobre siembra de maíz y comercialización de soja."
+        self.assertTrue(radar.ai_hard_excluded(text))
+
+    def test_local_ai_rejects_remote_hosts(self):
+        with patch.object(radar, "OLLAMA_HOST", "https://api.example.com"):
+            available, message = radar.local_ai_is_available()
+        self.assertFalse(available)
+        self.assertIn("localhost", message)
+
 
 class BulletinOfficialTests(unittest.TestCase):
     def test_listing_finds_sector_specific_official_notice(self):
