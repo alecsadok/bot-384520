@@ -280,5 +280,43 @@ class InstagramEditorialTests(unittest.TestCase):
         )
 
 
+    def test_report_sorts_news_by_publication_date_newest_first(self):
+        older = radar.Item(
+            title="Noticia anterior",
+            url="https://example.com/old",
+            source="Medio A",
+            published_at=datetime(2026, 11, 8, 9, 0, tzinfo=radar.TZ),
+            section="Noticia",
+        )
+        newer = radar.Item(
+            title="Noticia reciente",
+            url="https://example.com/new",
+            source="Medio B",
+            published_at=datetime(2026, 11, 11, 9, 0, tzinfo=radar.TZ),
+            section="Noticia",
+        )
+        event = radar.Item(
+            title="Evento",
+            url="https://example.com/event",
+            source="Universidad",
+            published_at=datetime(2026, 11, 10, 9, 0, tzinfo=radar.TZ),
+            section="Evento",
+        )
+        legal = radar.Item(
+            title="Normativa",
+            url="https://example.com/legal",
+            source="Boletín Oficial",
+            published_at=datetime(2026, 11, 11, 10, 0, tzinfo=radar.TZ),
+            section="Normativa",
+        )
+
+        ordered = radar.sort_items_for_report([older, event, legal, newer])
+
+        self.assertEqual(
+            [item.title for item in ordered],
+            ["Noticia reciente", "Noticia anterior", "Evento", "Normativa"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
