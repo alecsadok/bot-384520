@@ -330,6 +330,15 @@ def all_keywords() -> list[str]:
     return sorted({kw for group in KEYWORDS.values() for kw in group}, key=len, reverse=True)
 
 
+def contains_term(text: str, term: str) -> bool:
+    normalized_term = normalize(term)
+    # Las siglas cortas requieren límites de palabra: "ENSO" no debe
+    # coincidir dentro de "consenso" ni "ITH" dentro de "within".
+    if normalized_term in {"enso", "ith"}:
+        return re.search(rf"\\b{re.escape(normalized_term)}\\b", text) is not None
+    return normalized_term in text
+
+
 # Filtro editorial: una mención genérica al campo o a un cultivo no alcanza.
 DAIRY_EDITORIAL_TERMS = [
     "leche", "lácteo", "lechero", "lechera", "lechería", "tambo", "ordeño",
@@ -367,12 +376,12 @@ CROP_FOCUS_TERMS = [
 
 def editorially_relevant(text: str) -> bool:
     ntext = normalize(text)
-    dairy = any(normalize(term) in ntext for term in DAIRY_EDITORIAL_TERMS)
-    livestock = any(normalize(term) in ntext for term in LIVESTOCK_EDITORIAL_TERMS)
-    specific_livestock = any(normalize(term) in ntext for term in SPECIFIC_LIVESTOCK_TERMS)
-    el_nino = any(normalize(term) in ntext for term in ("el niño", "enso"))
-    meat = any(normalize(term) in ntext for term in MEAT_FOCUS_TERMS)
-    crop = any(normalize(term) in ntext for term in CROP_FOCUS_TERMS)
+    dairy = any(contains_term(ntext, term) for term in DAIRY_EDITORIAL_TERMS)
+    livestock = any(contains_term(ntext, term) for term in LIVESTOCK_EDITORIAL_TERMS)
+    specific_livestock = any(contains_term(ntext, term) for term in SPECIFIC_LIVESTOCK_TERMS)
+    el_nino = contains_term(ntext, "el niño") or contains_term(ntext, "enso")
+    meat = any(contains_term(ntext, term) for term in MEAT_FOCUS_TERMS)
+    crop = any(contains_term(ntext, term) for term in CROP_FOCUS_TERMS)
 
     if meat and not dairy:
         return False
@@ -389,11 +398,11 @@ def classify(text: str) -> tuple[list[str], int]:
     tags: list[str] = []
     score = 0
     for category, terms in KEYWORDS.items():
-        hits = [term for term in terms if normalize(term) in ntext]
+        hits = [term for term in terms if contains_term(ntext, term)]
         if hits:
             tags.append(category)
             score += sum(3 if len(normalize(term).split()) > 1 else 1 for term in hits[:12])
-    matched = [kw for kw in all_keywords() if normalize(kw) in ntext]
+    matched = [kw for kw in all_keywords() if contains_term(ntext, kw)]
     specific = [kw for kw in matched if normalize(kw) not in BROAD_TERMS]
     if not specific and len(matched) < 2:
         return [], 0
