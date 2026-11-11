@@ -364,12 +364,14 @@ def all_keywords() -> list[str]:
 
 
 def contains_term(text: str, term: str) -> bool:
+    normalized_text = normalize(text)
     normalized_term = normalize(term)
-    # Las siglas cortas requieren límites de palabra: "ENSO" no debe
-    # coincidir dentro de "consenso" ni "ITH" dentro de "within".
+    # Normalizamos ambos argumentos para admitir mayúsculas y tildes aunque
+    # la función se invoque desde pruebas o utilidades con texto sin normalizar.
+    # Las siglas cortas requieren límites de palabra para evitar falsos positivos.
     if normalized_term in {"enso", "ith"}:
-        return re.search(rf"\b{re.escape(normalized_term)}\b", text) is not None
-    return normalized_term in text
+        return re.search(rf"\b{re.escape(normalized_term)}\b", normalized_text) is not None
+    return normalized_term in normalized_text
 
 
 # Filtro editorial: una mención genérica al campo o a un cultivo no alcanza.
