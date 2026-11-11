@@ -45,30 +45,6 @@ jobs:
           path: ~/.ollama/models
           key: ollama-qwen3-1.7b-${{ runner.os }}-v1
 
-      - name: Preparar IA local gratuita (Ollama + Qwen3 1.7B)
-        continue-on-error: true
-        env:
-          OLLAMA_HOST: http://127.0.0.1:11434
-          OLLAMA_MODEL: qwen3:1.7b
-        run: |
-          curl -fsSL https://ollama.com/install.sh | sh
-          sudo systemctl stop ollama.service || true
-          mkdir -p "$HOME/.ollama/models"
-          export OLLAMA_MODELS="$HOME/.ollama/models"
-          nohup ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
-          for attempt in $(seq 1 30); do
-            if curl -fsS "$OLLAMA_HOST/api/tags" >/dev/null; then
-              break
-            fi
-            sleep 2
-          done
-          if ! curl -fsS "$OLLAMA_HOST/api/tags" >/dev/null; then
-            cat "$RUNNER_TEMP/ollama.log"
-            exit 1
-          fi
-          ollama pull "$OLLAMA_MODEL"
-          ollama list
-
       - name: Ejecutar BOT 384520 (fuentes + IA local gratuita)
         env:
           TZ: America/Argentina/Cordoba
@@ -76,8 +52,53 @@ jobs:
           RADAR_LOCAL_AI: '1'
           OLLAMA_HOST: http://127.0.0.1:11434
           OLLAMA_MODEL: qwen3:1.7b
+          OLLAMA_MODELS: ${{ runner.temp }}/ollama-models
           PYTHONUNBUFFERED: '1'
-        run: python radar_lechero.py
+        run: |
+          set -euo pipefail
+          mkdir -p "$OLLAMA_MODELS"
+          OLLAMA_PID=""
+
+          cleanup_ollama() {
+            if [ -n "$OLLAMA_PID" ]; then
+              kill "$OLLAMA_PID" 2>/dev/null || true
+            fi
+          }
+          trap cleanup_ollama EXIT
+
+          # La IA es estrictamente local. Si la instalación o descarga falla,
+          # se ejecuta el radar igual y usa sus filtros determinísticos.
+          if curl -fsSL https://ollama.com/install.sh | sh; then
+            sudo systemctl stop ollama.service || true
+            ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+            OLLAMA_PID=$!
+
+            OLLAMA_READY=0
+            for attempt in $(seq 1 30); do
+              if curl -fsS "$OLLAMA_HOST/api/tags" >/dev/null; then
+                OLLAMA_READY=1
+                break
+              fi
+              sleep 2
+            done
+
+            if [ "$OLLAMA_READY" -eq 1 ]; then
+              if ollama pull "$OLLAMA_MODEL"; then
+                echo "IA local preparada: $OLLAMA_MODEL"
+                ollama list
+              else
+                echo "No se pudo descargar el modelo; BOT 384520 continuará sin IA."
+                cat "$RUNNER_TEMP/ollama.log" || true
+              fi
+            else
+              echo "Ollama no inició; BOT 384520 continuará sin IA."
+              cat "$RUNNER_TEMP/ollama.log" || true
+            fi
+          else
+            echo "No se pudo instalar Ollama; BOT 384520 continuará sin IA."
+          fi
+
+          python radar_lechero.py
 
       - name: Guardar informes diarios en el repositorio
         run: |
