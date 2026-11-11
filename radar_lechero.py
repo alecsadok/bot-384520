@@ -335,7 +335,7 @@ def contains_term(text: str, term: str) -> bool:
     # Las siglas cortas requieren límites de palabra: "ENSO" no debe
     # coincidir dentro de "consenso" ni "ITH" dentro de "within".
     if normalized_term in {"enso", "ith"}:
-        return re.search(rf"\\b{re.escape(normalized_term)}\\b", text) is not None
+        return re.search(rf"\b{re.escape(normalized_term)}\b", text) is not None
     return normalized_term in text
 
 
