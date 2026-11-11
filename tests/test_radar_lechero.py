@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from unittest.mock import patch
 
@@ -145,6 +145,138 @@ class BulletinOfficialTests(unittest.TestCase):
         )
         self.assertTrue(
             radar.ai_event_date_visible(future_date, "La jornada se realizará el 18 de noviembre.")
+        )
+
+
+class InstagramEditorialTests(unittest.TestCase):
+    def test_all_previously_supplied_web_pages_are_kept(self):
+        configured = {source["url"] for source in radar.WEB_SOURCES}
+        required = {
+            "https://www.argentina.gob.ar/noticias",
+            "https://www.argentina.gob.ar/inta/noticias",
+            "https://intainforma.inta.gob.ar/noticias/",
+            "https://www.argentina.gob.ar/senasa",
+            "https://www.todolecheria.com.ar/noticias/",
+            "https://news.agrofy.com.ar/lecheria",
+            "https://news.agrofy.com.ar/",
+            "https://bichosdecampo.com/",
+            "https://agrolink.com.ar/ultimas-noticias/",
+            "https://www.clarin.com/rural/",
+            "https://agroverdad.com.ar/todas-las-noticias",
+            "https://mundoagrocba.com.ar/",
+            "https://www.agritotal.com/",
+            "https://www.infobae.com/revista-chacra/",
+            "https://www.lanacion.com.ar/economia/campo/",
+            "https://www.unl.edu.ar/noticias/",
+            "https://www.infocampo.com.ar/",
+            "https://agroempresario.com/",
+            "https://portalechero.com/",
+            "https://www.ocla.org.ar/",
+            "https://www.fcv.unl.edu.ar/eventos/",
+            "https://cmver.com.ar/",
+            "https://mundorural.com.ar/",
+            "https://www.infolactea.com.ar/",
+            "https://www.argentina.gob.ar/economia/agricultura",
+            "https://www.indec.gob.ar/",
+            "https://www.bcr.com.ar/es/mercados/investigacion-y-desarrollo/informativo-semanal",
+        }
+        self.assertTrue(required.issubset(configured))
+        self.assertTrue(radar.GOOGLE_SEARCH_REFERENCE_URL.startswith("https://www.google.com/search?"))
+
+    def test_all_social_profiles_are_loaded_and_previous_accounts_remain(self):
+        self.assertGreaterEqual(len(radar.SOCIAL_PROFILES), 100)
+        self.assertIn("https://www.instagram.com/chacradebarrow", radar.SOCIAL_PROFILES)
+        self.assertIn("https://www.instagram.com/eeafamailla", radar.SOCIAL_PROFILES)
+        self.assertIn("https://x.com/pamperotv?lang=es", radar.SOCIAL_PROFILES)
+        self.assertIn("https://x.com/senasaar", radar.SOCIAL_PROFILES)
+
+    def test_social_rotation_covers_every_profile_without_overlap(self):
+        batch_count = (
+            len(radar.SOCIAL_PROFILES) + radar.SOCIAL_SCAN_BATCH_SIZE - 1
+        ) // radar.SOCIAL_SCAN_BATCH_SIZE
+        start_date = datetime(2026, 11, 1, tzinfo=radar.TZ)
+        batches = [
+            radar.social_profiles_for_run(start_date + timedelta(days=offset))
+            for offset in range(batch_count)
+        ]
+        flattened = [url for batch in batches for url in batch]
+        self.assertEqual(len(flattened), len(radar.SOCIAL_PROFILES))
+        self.assertEqual(set(flattened), set(radar.SOCIAL_PROFILES))
+
+    def test_press_and_institutional_sources_keep_equal_base_weight(self):
+        published = datetime(2026, 11, 11, 10, 0, tzinfo=radar.TZ)
+        institutional = radar.Item(
+            title="Investigación para tambos",
+            url="https://www.argentina.gob.ar/inta/noticias/ejemplo",
+            source="INTA",
+            published_at=published,
+            relevance=60,
+        )
+        press = radar.Item(
+            title="Investigación para tambos",
+            url="https://www.todolecheria.com.ar/noticias/ejemplo",
+            source="Todo Lechería",
+            published_at=published,
+            relevance=60,
+        )
+        radar.assign_editorial_metadata([institutional, press])
+        self.assertEqual(institutional.relevance, press.relevance)
+        self.assertNotEqual(institutional.editorial_group, press.editorial_group)
+
+    def test_general_climate_news_is_excluded_but_dairy_impact_is_kept(self):
+        self.assertFalse(
+            radar.editorially_relevant(
+                "Pronóstico de lluvias y temperaturas para el centro del país."
+            )
+        )
+        self.assertTrue(
+            radar.editorially_relevant(
+                "La sequía reduce la disponibilidad de pasturas para tambos y vacas lecheras."
+            )
+        )
+
+    def test_non_google_direct_source_survives_fallback_after_full_article_filter(self):
+        published = datetime(2026, 11, 11, 10, 0, tzinfo=radar.TZ)
+        direct = radar.Item(
+            title="Un avance técnico en un ensayo",
+            url="https://www.argentina.gob.ar/inta/noticias/ensayo",
+            source="INTA",
+            published_at=published,
+            summary="La nota desarrolla una experiencia de investigación aplicada.",
+        )
+        generic_google = radar.Item(
+            title="Novedades del campo",
+            url="https://example.com/agro",
+            source="Medio general",
+            published_at=published,
+            summary="Información general sin relación demostrable con la lechería.",
+            discovered_via_google_news=True,
+        )
+        filtered = radar.filter_google_news_fallback([direct, generic_google])
+        self.assertEqual([item.url for item in filtered], [direct.url])
+
+    def test_verified_future_event_is_kept_even_if_announcement_is_older_than_news_window(self):
+        now = datetime(2026, 11, 11, 12, 0, tzinfo=radar.TZ)
+        event = radar.Item(
+            title="Jornada técnica para tambos",
+            url="https://example.com/evento",
+            source="Universidad",
+            published_at=now - timedelta(days=14),
+            section="Evento",
+            event_date=(now + timedelta(days=20)).strftime("%d/%m/%Y"),
+            event_date_verified=True,
+        )
+        self.assertTrue(radar.should_keep_item(event, now))
+        event.event_date_verified = False
+        self.assertFalse(radar.should_keep_item(event, now))
+
+    def test_editorial_schema_has_instagram_angle_and_format(self):
+        properties = radar.NEWS_AI_SCHEMA["properties"]["items"]["items"]["properties"]
+        self.assertIn("instagram_angle", properties)
+        self.assertIn("format_suggestion", properties)
+        self.assertEqual(
+            properties["format_suggestion"]["enum"],
+            ["Carrusel", "Reel", "Placa", "Historias", "Revisar"],
         )
 
 
