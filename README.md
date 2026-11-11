@@ -1,6 +1,6 @@
 # BOT 384520
 
-Monitoreo diario de noticias, eventos y normativa de interés para la **lechería argentina, la ganadería bovina y el ganado lechero**. El proyecto utiliza scraping de páginas públicas, RSS, Google News RSS y la Primera Sección del Boletín Oficial. **No utiliza inteligencia artificial ni APIs de modelos generativos.**
+Monitoreo diario de noticias, eventos y normativa de interés para la **lechería argentina, los tambos y el ganado lechero**. El proyecto combina scraping de páginas públicas, RSS, Google News RSS, la Primera Sección del Boletín Oficial y búsqueda web asistida por IA cuando está configurada.
 
 ## Enfoque editorial
 
@@ -15,6 +15,26 @@ El radar prioriza:
 No se incorporan pronósticos meteorológicos, observaciones del tiempo ni alertas generales del SMN. Tampoco se priorizan noticias centradas exclusivamente en maíz u otros cultivos, mercados de granos o agricultura sin relación concreta con la alimentación del ganado. Se excluyen las publicaciones enfocadas en producción de carne, faena, feedlots o engorde, salvo que tengan un contenido claramente vinculado también con la lechería.
 
 El filtro combina términos temáticos con reglas de exclusión. Una noticia sobre un cultivo puede ingresar cuando el contenido la relaciona expresamente con forrajes, silaje, nutrición o alimentación animal. Una noticia sobre El Niño puede ingresar como tema específico, aunque no sea una nota meteorológica de pronóstico.
+
+## Búsqueda web asistida por IA
+
+Cuando está disponible el secreto `OPENAI_API_KEY`, el radar utiliza la **Responses API de OpenAI con búsqueda web** para descubrir publicaciones que pueden no aparecer en los RSS o en el rastreo de portales. La IA busca noticias recientes y también eventos futuros, analiza la pertinencia para tambos y ganado lechero y devuelve los datos en un formato estructurado.
+
+- Noticias: publicaciones de Argentina de las últimas 24 horas.
+- Eventos: actividades con fecha futura verificable dentro de los próximos 90 días, aunque el anuncio original se haya publicado antes.
+- Temas: producción y economía lechera, vacas en ordeño, sanidad, reproducción, crianza y recría, nutrición, forrajes, tecnología, jornadas, cursos, seminarios, congresos y días de campo.
+- Exclusiones: noticias de carne, faena, feedlots, agricultura sin vínculo con el ganado y meteorología general.
+
+Los resultados propuestos por la IA no se publican automáticamente: el script abre cada página original y comprueba el título, el contenido y las fechas. Los eventos deben mostrar el día y mes en la página; las noticias deben tener una fecha de publicación verificable dentro de la ventana. Los datos de localidad y organizador solo se muestran cuando aparecen en el contenido de la fuente. Si la clave no está configurada o la API falla, el radar continúa con sus fuentes RSS y filtros habituales.
+
+### Activar la IA en GitHub Actions
+
+1. Crear una clave de API desde el [panel de API de OpenAI](https://platform.openai.com/api-keys) y tener habilitada la facturación de API.
+2. En el repositorio, entrar a **Settings → Secrets and variables → Actions → New repository secret**.
+3. Crear un secreto llamado exactamente `OPENAI_API_KEY` y pegar allí la clave. **No guardar la clave en el código, README ni en este chat.**
+4. En **Actions**, ejecutar manualmente **BOT 384520 diario**. En el informe, revisar la fila **Búsqueda web con IA** para confirmar si pudo buscar y cuántos resultados verificó.
+
+El modelo configurado por defecto es `gpt-6-luna`. La integración se puede desactivar con `RADAR_AI_WEB_SEARCH=0` o cambiar mediante `OPENAI_MODEL`. El uso de la API se factura por separado de una suscripción de ChatGPT; el costo depende de los tokens y de las búsquedas web realizadas. Consultar los [precios vigentes de la API](https://developers.openai.com/api/docs/pricing).
 
 ## Qué genera
 
