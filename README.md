@@ -75,10 +75,10 @@ Se consultan perfiles públicos de Instagram y X sin autenticación. Cuando el H
 
 ## Criterios de calidad y límites
 
-- Solo se incluyen noticias y eventos con fecha de publicación identificable en las últimas 24 horas. Una página sin fecha fiable queda fuera, para no presentar material viejo como nuevo.
+- Las noticias deben tener fecha de publicación verificable dentro de las últimas 24 horas. Los eventos encontrados con IA pueden haberse anunciado antes, pero solo se conservan cuando la fecha de realización es futura, está visible en la página original y se encuentra dentro de los próximos 90 días. Si no se puede verificar la fecha del evento, queda fuera.
 - No se inventan fechas de publicación. Las fechas futuras de eventos se extraen del texto cuando pueden identificarse.
 - Se eliminan duplicados por título normalizado.
-- Los resúmenes de noticias son extractivos, no generativos.
+- En las fuentes RSS y portales, los resúmenes son extractivos. En los resultados de búsqueda web con IA, la síntesis es generada por el modelo y se conserva únicamente después de verificar el enlace y el contenido de la página original.
 - El copy de normativa se construye con reglas y plantillas; no reemplaza asesoramiento legal ni revisión humana.
 - El filtro editorial reduce resultados ajenos al ganado, pero una mención contextual puede requerir revisión humana. Conviene revisar titulares y enlaces antes de redistribuir el informe.
 - El scraping está sujeto a cambios de diseño, disponibilidad, robots, límites de frecuencia, JavaScript y condiciones de cada fuente. Por eso cada informe incluye una tabla de estado de fuentes.
