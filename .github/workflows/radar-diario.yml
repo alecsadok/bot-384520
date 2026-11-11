@@ -36,6 +36,9 @@ jobs:
       - name: Validar sintaxis Python
         run: python -m py_compile radar_lechero.py
 
+      - name: Ejecutar pruebas de filtros y Boletín Oficial
+        run: python -m unittest discover -s tests -v
+
       - name: Ejecutar BOT 384520 (fuentes + IA opcional)
         env:
           TZ: America/Argentina/Cordoba
