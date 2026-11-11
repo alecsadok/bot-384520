@@ -42,18 +42,63 @@ jobs:
           RADAR_SCAN_SOCIAL: '1'
           RADAR_AI_WEB_SEARCH: '1'
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL: gpt-6-luna
+          OPENAI_MODEL: gpt-6-astra
+          OPENAI_BULLETIN_MODEL: gpt-6-astra
           PYTHONUNBUFFERED: '1'
         run: python radar_lechero.py
 
       - name: Guardar informes diarios en el repositorio
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add informes/bot384520_*.html informes/bot384520_*.txt
           if git diff --cached --quiet; then
             echo "No hay cambios en los informes de hoy."
-          else
-            git commit -m "Generar BOT 384520 $(TZ=America/Argentina/Cordoba date +%d/%m/%Y)"
-            git push
+            exit 0
           fi
+
+          git commit -m "Generar BOT 384520 $(TZ=America/Argentina/Cordoba date +%d/%m/%Y)"
+
+          # Otro commit puede llegar a main mientras se ejecuta el crawler.
+          # Rebasar el informe sobre el main remoto evita el rechazo non-fast-forward.
+          for attempt in 1 2 3; do
+            echo "Sincronizando con origin/main (intento $attempt)..."
+            git fetch origin main
+
+            if ! git rebase origin/main; then
+              echo "El rebase encontró conflictos. Se aceptan los informes generados por esta ejecución,"
+              echo "pero cualquier conflicto fuera de informes/ requiere revisión."
+              mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+              if [ "${#conflicts[@]}" -eq 0 ]; then
+                git rebase --abort
+                exit 1
+              fi
+
+              for path in "${conflicts[@]}"; do
+                case "$path" in
+                  informes/bot384520_*.html|informes/bot384520_*.txt)
+                    git checkout --theirs -- "$path"
+                    git add -- "$path"
+                    ;;
+                  *)
+                    echo "Conflicto no automático: $path"
+                    git rebase --abort
+                    exit 1
+                    ;;
+                esac
+              done
+              GIT_EDITOR=true git rebase --continue
+            fi
+
+            if git push origin HEAD:main; then
+              echo "Informe publicado correctamente en main."
+              exit 0
+            fi
+
+            echo "main volvió a avanzar durante el push; se reintentará."
+            sleep $((attempt * 2))
+          done
+
+          echo "No se pudo publicar el informe tras 3 intentos."
+          exit 1
